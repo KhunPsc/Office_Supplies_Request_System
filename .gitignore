@@ -1,0 +1,17 @@
+# Dependency & IDE
+.vscode/
+.idea/
+node_modules/
+
+# OS Files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Project Specific
+.gemini/
+tmp/
+*.log
+*.bak
+*.tmp
+config.local.js

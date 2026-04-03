@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบแจ้งคำขอซื้อวัสดุสำนักงาน PEAจอมทอง</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Prompt:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- ==================== LOGIN ==================== -->
+    <div class="login-container" id="loginContainer">
+        <div class="login-card">
+            <h1>เข้าสู่ระบบ</h1>
+            <p class="subtitle">ระบบแจ้งคำขอซื้อวัสดุสำนักงาน PEAจอมทอง</p>
+            <form id="loginForm" style="text-align: left;">
+                <div class="form-group">
+                    <label for="loginUsername">Username รายแผนก <span class="required-asterisk">*</span></label>
+                    <input type="text" id="loginUsername" required placeholder="รหัสผู้ใช้งาน..."
+                        style="text-transform: lowercase;">
+                </div>
+                <button type="submit" class="btn btn-primary"
+                    style="width: 100%; justify-content: center; padding: 0.75rem;">เข้าใช้งาน</button>
+                <p id="loginError" class="status-error hide" style="margin-top: 0.75rem; font-size: 0.85rem;"></p>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==================== APP SHELL ==================== -->
+    <div class="app-shell hide" id="mainAppContainer" style="display: none;">
+
+        <!-- Sidebar -->
+        <aside class="sidebar" id="appSidebar">
+            <div class="sidebar-brand">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path
+                        d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+                    </path>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                </svg>
+                <h3>PEA จอมทอง</h3>
+            </div>
+            <nav class="sidebar-menu">
+                <button class="sidebar-menu-btn active" data-target="formSection" id="menuHomeBtn">แบบฟอร์มขอจัดซื้อ</button>
+                <button class="sidebar-menu-btn" data-target="trackingSection" id="menuTrackingBtn">ติดตามสถานะ</button>
+                <button class="sidebar-menu-btn" data-target="historySection">ประวัติ</button>
+            </nav>
+            <div class="sidebar-user">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+                <span id="sidebarUserDept">ผู้ใช้งานระบบ</span>
+            </div>
+        </aside>
+
+        <!-- Main Panel -->
+        <div class="main-panel">
+
+            <!-- Top Bar -->
+            <header class="topbar">
+                <div class="topbar-left">
+                    <button class="sidebar-toggle" id="sidebarToggle" title="ซ่อน/แสดงเมนู">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                    </button>
+                    <span id="breadcrumbText">หน้าหลัก / <strong>แบบฟอร์มขอจัดซื้อ</strong></span>
+                </div>
+                <div class="topbar-right">
+                    <span class="topbar-date" id="headerDate"></span>
+                    <div id="adminToggleContainer" class="admin-toggle-wrapper hide"
+                        style="display: none; align-items: center; gap: 8px; margin-right: 15px;">
+                        <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">โหมดผู้ดูแล</span>
+                        <label class="switch">
+                            <input type="checkbox" id="adminModeToggle">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <button id="logoutBtn" class="btn btn-danger">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
+                            viewBox="0 0 24 24">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path>
+                        </svg>
+                        ออกจากระบบ
+                    </button>
+                </div>
+            </header>
+
+            <!-- Page Content -->
+            <div class="page-content">
+
+                <!-- ===== TAB 1: Form ===== -->
+                <section id="formSection" class="tab-pane">
+
+                    <!-- New: Admin Workboard Home View -->
+                    <div id="adminHomeView" class="hide" style="display:none;">
+                        <!-- JS will populate this with pending procurement summaries AND the worklist table -->
+                    </div>
+
+                    <form id="purchaseRequestForm">
+
+                        <!-- Block 1: Requester Info -->
+                        <div class="card form-card" style="margin-bottom: 1.25rem;">
+                            <div class="form-card-header header-info">
+                                <h2>ข้อมูลผู้ขอ</h2>
+                            </div>
+                            <div class="form-card-body">
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label for="employeeName">ชื่อผู้ขอ <span
+                                                class="required-asterisk">*</span></label>
+                                        <input type="text" id="employeeName" name="employeeName" required
+                                            placeholder="เช่น ขุนพล">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>แผนก / กฟส.</label>
+                                        <div class="dept-display" id="deptDisplay">-</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Block 2: Items -->
+                        <div class="card form-card">
+                            <div class="form-card-header header-items">
+                                <h2>รายการวัสดุที่ต้องการ</h2>
+                            </div>
+                            <div class="form-card-body">
+                                <div class="items-toolbar">
+                                    <span style="color: var(--text-muted); font-size: 0.9rem;">เพิ่ม/ลบรายการวัสดุที่ต้องการจัดซื้อ</span>
+                                    <button type="button" class="btn btn-outline" id="addItemBtn">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2">
+                                            <path d="M12 5v14M5 12h14"></path>
+                                        </svg>
+                                        เพิ่มรายการ
+                                    </button>
+                                </div>
+
+                                <div id="itemsContainer"></div>
+
+                                <div class="form-submit-area" style="margin-top: 1rem;">
+                                    <button type="submit" class="btn btn-primary" id="submitBtn">
+                                        <span id="submitBtnText">🚀 ส่งคำขอจัดซื้อ (Submit)</span>
+                                        <div class="spinner hide" id="submitSpinner"></div>
+                                    </button>
+                                    <p class="status-message" id="statusMessage"></p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ==================== ITEM TEMPLATE ==================== -->
+                        <template id="itemTemplate">
+                            <div class="item-row">
+                                <div class="item-number"></div>
+
+                                <div class="item-row-top">
+                                    <div class="form-group fg-detail">
+                                        <label>รายละเอียดวัสดุที่ขอจัดซื้อ <span class="required-asterisk">*</span>
+                                            <span style="font-size:0.8rem; color:var(--text-muted); font-weight:normal;">(เช่น
+                                                ปลั๊กพ่วง 3
+                                                เมตร, ผงหมึกเครื่องปริ้น สีดำ SAMSUNG ML-4510ND)</span>
+                                        </label>
+                                        <input type="text" class="item-name" required placeholder="ระบุรายละเอียดให้ชัดเจน">
+                                    </div>
+                                    <div class="form-group fg-qty">
+                                        <label>จำนวน <span class="required-asterisk">*</span></label>
+                                        <input type="number" class="item-quantity" min="1" step="any" required
+                                            placeholder="เช่น 1, 4, 5">
+                                    </div>
+                                    <div class="form-group fg-unit">
+                                        <label>หน่วยนับ <span class="required-asterisk">*</span></label>
+                                        <input type="text" class="item-unit" required placeholder="เช่น ชิ้น, แพ็ค, รีม">
+                                    </div>
+                                </div>
+
+                                <div class="item-row-bottom">
+                                    <div class="form-group">
+                                        <label>รหัสทรัพย์สิน <span class="badge-optional">ไม่บังคับ</span></label>
+                                        <input type="text" class="item-asset" placeholder="ระบุรหัสทรัพย์สิน (ถ้ามี)">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>หมายเหตุ อื่น ๆ <span class="badge-optional">ไม่บังคับ</span>
+                                            <span style="font-size:0.8rem; color:var(--text-muted); font-weight:normal;">(เช่น ด่วนมาก, ขอสีแดง)</span>
+                                        </label>
+                                        <input type="text" class="item-remarks" placeholder="ระบุหมายเหตุเพิ่มเติม (ถ้ามี)">
+                                    </div>
+                                    <div class="form-group" style="min-width: 250px;">
+                                        <label>ความเร่งด่วน (Priority) <span class="required-asterisk">*</span></label>
+                                        <div style="display: flex; align-items: center; gap: 12px; margin-top: 5px;">
+                                            <label class="switch-priority">
+                                                <input type="checkbox" class="item-priority-toggle">
+                                                <div class="slider-priority">
+                                                    <span class="label-off">ปกติ</span>
+                                                    <span class="label-on">ด่วน</span>
+                                                </div>
+                                            </label>
+                                            <span class="priority-note" style="font-size: 0.8rem; color: #b45309; background: #fff9f0; padding: 0.4rem 0.6rem; border-radius: 6px; border: 1px solid #fed7aa; display: none;">
+                                                💡 หมึกพิมพ์/Drum ถ้าไม่มีสต๊อกต้องรอสั่งประมาณ 10-30 วัน
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="item-row-file">
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label>รูปภาพ/ไฟล์ตัวอย่างวัสดุ <span class="badge-optional">ไม่บังคับ</span>
+                                            <span style="font-size:0.8rem; color:var(--text-muted); font-weight:normal;">(PDF หรือ
+                                                Image
+                                                สูงสุด 10 MB)</span>
+                                        </label>
+                                        <input type="file" class="item-file" accept="image/*,.pdf"
+                                            style="padding:0.4rem; background:transparent; border:1px dashed var(--border-color);">
+                                        <input type="hidden" class="item-file-base64">
+                                        <input type="hidden" class="item-file-name">
+                                        <input type="hidden" class="item-file-mime">
+                                    </div>
+                                </div>
+
+                                <div class="item-row-actions">
+                                    <button type="button" class="btn btn-danger" onclick="removeItem(this)">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                            stroke-width="2">
+                                            <path d="M18 6L6 18M6 6l12 12"></path>
+                                        </svg>
+                                        ลบรายการนี้
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+
+                    </form>
+                </section>
+
+                <!-- ===== TAB 2: Tracking ===== -->
+                <section id="trackingSection" class="tab-pane hide" style="display: none;">
+                    <div id="trackingContainer">
+                        <!-- JS will populate separate cards for each status here -->
+                        <div style="text-align:center; padding:2rem; color:var(--text-muted);">
+                            กำลังโหลดข้อมูล...
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===== TAB 3: History ===== -->
+                <section id="historySection" class="tab-pane hide" style="display: none;">
+                    <div class="card" style="padding: 1.5rem; border-top: 4px solid var(--primary-main);">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.5rem;">
+                            <div>
+                                <h2 class="section-title" style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 8px;">
+                                    <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                    ประวัติการเบิก/จัดซื้อ
+                                </h2>
+                                <p style="color: var(--text-muted); margin: 0; font-size: 0.95rem;">
+                                    รายการคำขอที่ดำเนินการ <strong style="color:#10b981;">เสร็จสิ้น</strong> หรือ <strong style="color:#ef4444;">ยกเลิก</strong> แล้ว
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <div style="position: relative; display: flex; align-items: center;">
+                                    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="position: absolute; left: 10px; color: var(--text-muted);">
+                                        <circle cx="11" cy="11" r="8"></circle>
+                                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                    </svg>
+                                    <input type="text" id="historySearchInput" placeholder="ค้นหา รหัสคำขอ, ชื่อวัสดุ..." class="form-control" style="padding-left: 32px; padding-right: 32px; width: 250px; border-radius: 20px;">
+                                    <button id="clearHistorySearchBtn" class="hide" style="position: absolute; right: 10px; background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted); display: none;">&times;</button>
+                                </div>
+                                <select id="historyFilterSelect" class="form-control" style="width: auto; border-radius: 20px;">
+                                    <option value="ทั้งหมด">ทั้งหมด</option>
+                                    <option value="เสร็จสิ้น">เสร็จสิ้น</option>
+                                    <option value="ยกเลิก">ยกเลิก</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div id="historyTableContainer" style="overflow-x: auto;">
+                            <!-- Populated by JS -->
+                            <div style="text-align:center; padding:3rem; color:var(--text-muted);">
+                                กำลังโหลดข้อมูลประวัติ...
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== CONFIRMATION MODAL ===== -->
+    <div class="modal-overlay hide" id="confirmModal">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h3>ยืนยันการส่งคำขอ</h3>
+            </div>
+            <div class="modal-body">
+                <p>คุณต้องการส่งคำขอจัดซื้อนี้หรือไม่?</p>
+                <div id="confirmSummary" style="margin-top: 1rem;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" id="confirmEditBtn">แก้ไข</button>
+                <button class="btn btn-primary" id="confirmSubmitBtn">ยืนยัน</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== IMAGE VIEW MODAL ===== -->
+    <div class="modal-overlay hide" id="imageModal">
+        <div class="modal-dialog" style="max-width: 800px; width: 90%;">
+            <div class="modal-header">
+                <h3>🔍 ดูรูปภาพ/เอกสารแนบ</h3>
+                <button onclick="closeImageModal()"
+                    style="background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:1.5rem;">&times;</button>
+            </div>
+            <div class="modal-body"
+                style="text-align: center; background: #f8fafc; padding: 1rem; min-height: 300px; display: flex; align-items: center; justify-content: center;">
+                <img id="imagePreview"
+                    style="max-width: 100%; max-height: 70vh; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display:none;">
+                <iframe id="pdfPreview" style="width: 100%; height: 70vh; border:none; display:none;"></iframe>
+                <div id="previewLoader" style="color: var(--text-muted);">กำลังโหลด...</div>
+            </div>
+            <div class="modal-footer">
+                <a id="downloadBtn" href="#" target="_blank" class="btn btn-outline" style="text-decoration:none;">📥
+                    ดาวน์โหลดไฟล์จริง</a>
+                <button class="btn btn-primary" onclick="closeImageModal()">ปิด</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== MODAL: Admin Status Management ===== -->
+    <div class="modal-overlay hide" id="adminStatusModal" style="display: none;">
+        <div class="modal-dialog" style="max-width: 800px; width: 90%;">
+            <div class="modal-header">
+                <h3>🛠️ จัดการสถานะคำขอรายชิ้น</h3>
+                <button onclick="closeAdminModal()"
+                    style="background:none; border:none; cursor:pointer; font-size:1.5rem;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1rem;">
+                <div class="form-group" style="margin-bottom:1rem;">
+                    <label>รหัสคำขอ:</label>
+                    <div id="adminReqId" style="font-weight:bold; color:var(--primary-main); font-size:1.1rem;">
+                        -</div>
+                </div>
+                
+                <div id="adminItemsContainer">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeAdminModal()">ยกเลิก</button>
+                <button class="btn btn-primary" id="saveStatusBtn">💾 บันทึกการเปลี่ยนแปลง</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== MODAL: Batch Admin Status Management ===== -->
+    <div class="modal-overlay hide" id="batchAdminStatusModal" style="display: none;">
+        <div class="modal-dialog" style="max-width: 900px; width: 90%;">
+            <div class="modal-header">
+                <h3>🛠️ จัดการสถานะคำขอ (หลายรายการ)</h3>
+                <button onclick="closeBatchAdminModal()"
+                    style="background:none; border:none; cursor:pointer; font-size:1.5rem;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1rem;">
+                <div style="background: var(--bg-body); padding: 1rem; border-radius: 8px; margin-bottom: 1rem; display: flex; align-items: center; gap: 10px;">
+                    <label style="font-weight: bold;">ปรับสถานะทั้งหมดเป็น:</label>
+                    <select id="batchStatusSelect" class="form-control" style="width: auto;">
+                        <option value="">-- เลือกสถานะ --</option>
+                        <option value="รอจัดซื้อ">รอจัดซื้อ</option>
+                        <option value="อยู่ระหว่างจัดซื้อ">อยู่ระหว่างจัดซื้อ</option>
+                        <option value="เสร็จสิ้น">เสร็จสิ้น</option>
+                        <option value="ยกเลิก">ยกเลิก</option>
+                    </select>
+                    <button class="btn btn-outline" id="applyBatchStatusBtn">เปลี่ยนทั้งหมด</button>
+                </div>
+                
+                <div id="batchAdminItemsContainer" style="max-height: 50vh; overflow-y: auto;">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeBatchAdminModal()">ยกเลิก</button>
+                <button class="btn btn-primary" id="saveBatchStatusBtn">💾 บันทึกทั้งหมด</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ===== MODAL: Procurement Print ===== -->
+    <div class="modal-overlay hide" id="procurementPrintModal" style="display: none;">
+        <div class="modal-dialog" style="max-width: 900px; width: 90%; background: #f8fafc;">
+            <div class="modal-header no-print">
+                <h3>🖨️ ใบงานรายการจัดซื้อ (Procurement Worksheet)</h3>
+                <button onclick="closeProcurementPrintModal()"
+                    style="background:none; border:none; cursor:pointer; font-size:1.5rem;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1rem; overflow-y: auto; max-height: 60vh;">
+                <!-- Printable Area -->
+                <div id="printableWorksheet" style="padding: 2.5rem; background: white; color: black !important; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-radius: 4px;">
+                    <div style="text-align: center; margin-bottom: 2rem;">
+                        <h2 style="margin-bottom: 0.5rem; font-size: 1.4rem;">ใบรายการวัสดุเตรียมจัดซื้อ (PEA จอมทอง)</h2>
+                        <p style="color: #555; text-align: center; font-size: 0.95rem;" id="printDateString"></p>
+                    </div>
+                    
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 2rem; border: 1px solid #ddd;" border="1" cellpadding="8" cellspacing="0" bordercolor="#ddd">
+                        <thead>
+                            <tr style="background-color: #f1f5f9;">
+                                <th style="width: 5%; text-align: center; padding: 10px;">ลำดับ</th>
+                                <th style="width: 32%; text-align: left; padding: 10px;">รายละเอียดวัสดุ</th>
+                                <th style="width: 13%; text-align: center; padding: 10px;">จำนวน/หน่วย</th>
+                                <th style="width: 15%; text-align: center; padding: 10px;">แผนก/ผู้ขอ</th>
+                                <th style="width: 20%; text-align: center; padding: 10px;">รหัสคำขอ</th>
+                                <th style="width: 15%; text-align: center; padding: 10px;">หมายเหตุ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="printWorksheetBody">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                    
+                    <div style="display: flex; justify-content: space-between; margin-top: 4rem;">
+                        <div style="text-align: center; width: 300px;">
+                            <p>ผู้จัดทำเอกสาร</p>
+                            <br><br><br>
+                            <p>(..........................................................)</p>
+                            <br><br>
+                            <p style="margin-top: 5px;">วันที่ ........../........../..........</p>
+                        </div>
+                        <div style="text-align: center; width: 300px;">
+                            <p>ผู้อนุมัติ/ผู้ตรวจ</p>
+                            <br><br><br>
+                            <p>(..........................................................)</p>
+                            <br><br>
+                            <p style="margin-top: 5px;">วันที่ ........../........../..........</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer no-print" style="justify-content: space-between; align-items: center; padding: 1rem 1.5rem; background: white; border-top: 1px solid #eee;">
+                <div>
+                    <span style="color: #64748b; font-size: 0.85rem;">
+                        💡 <strong>ระบบจะปรับสถานะให้เป็น "อยู่ระหว่างจัดซื้อ" อัตโนมัติ</strong> เมื่อกดพิมพ์/บันทึก PDF
+                    </span>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-outline" onclick="closeProcurementPrintModal()">ปิด</button>
+                    <button class="btn btn-primary" id="finalPrintPdfBtn" onclick="printProcurementWorksheet()" style="background: #2563eb; border-color: #2563eb;">🖨️ พิมพ์ / บันทึก PDF</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <style>
+        /* Priority Switch Styling */
+        .switch-priority {
+            position: relative;
+            display: inline-block;
+            width: 96px;
+            height: 32px;
+        }
+        .switch-priority input { 
+            opacity: 0; width: 0; height: 0; 
+        }
+        .slider-priority {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #f1f5f9;
+            transition: .3s;
+            border-radius: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            border: 1px solid #e2e8f0;
+        }
+        .slider-priority:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 44px;
+            left: 3px;
+            bottom: 2px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            z-index: 1;
+        }
+        .switch-priority input:checked + .slider-priority {
+            background-color: #fee2e2;
+            border-color: #fecaca;
+        }
+        .switch-priority input:checked + .slider-priority:before {
+            transform: translateX(46px);
+        }
+        .slider-priority .label-off, .slider-priority .label-on {
+            font-size: 0.8rem;
+            font-weight: 600;
+            z-index: 2;
+            transition: .3s;
+            user-select: none;
+        }
+        .slider-priority .label-off { color: #64748b; }
+        .slider-priority .label-on { color: #64748b; }
+        .switch-priority input:checked + .slider-priority .label-on { color: #ef4444; }
+        .switch-priority input:not(:checked) + .slider-priority .label-off { color: #334155; }
+
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            .app-shell, .topbar, .sidebar, .modal-overlay {
+                display: none !important;
+            }
+            #procurementPrintModal {
+                display: block !important;
+                visibility: visible !important;
+                position: absolute;
+                left: 0;
+                top: 0;
+                margin: 0;
+                padding: 0;
+                background: white;
+            }
+            #procurementPrintModal .modal-dialog {
+                width: 100% !important;
+                max-width: none !important;
+                box-shadow: none !important;
+                border: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            #printableWorksheet, #printableWorksheet * {
+                visibility: visible;
+            }
+            #printableWorksheet {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                margin: 0;
+                padding: 0;
+                box-shadow: none !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+        }
+    </style>
+
+    <script src="config.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>

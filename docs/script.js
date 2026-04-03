@@ -1033,7 +1033,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td>
                             <div style="display:flex; gap:5px; justify-content:center;">
                                 ${showManageBtn ? `<button class="btn btn-primary" style="font-size:0.75rem; padding:0.25rem 0.5rem;" onclick="event.stopPropagation(); openAdminModal('${req.id}')">จัดการ</button>` : ''}
-                                ${canEdit ? `<button class="btn btn-outline" style="font-size:0.75rem; padding:0.25rem 0.5rem;" onclick="event.stopPropagation(); editRequest('${req.id}')">แก้ไข</button>` : (showManageBtn ? '' : '-')}
+                                ${canEdit ? `
+                                    <button class="btn btn-outline" style="font-size:0.75rem; padding:0.25rem 0.5rem;" onclick="event.stopPropagation(); editRequest('${req.id}')">แก้ไข</button>
+                                    <button class="btn btn-danger" style="font-size:0.75rem; padding:0.25rem 0.5rem; border-color: #ef4444;" onclick="event.stopPropagation(); cancelRequest('${req.id}')">ยกเลิก</button>
+                                ` : (showManageBtn ? '' : '-')}
                             </div>
                         </td>
                     </tr>
@@ -1203,6 +1206,56 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+    
+    // ===== Cancel Request (User) =====
+    window.cancelRequest = async function(id) {
+        const req = currentRequestsData[id];
+        if (!req) return;
+
+        const confirmMsg = `ยืนยันการยกเลิกคำขอ ${id} ?\nทุกรายการในคำขอนี้จะถูกเปลี่ยนสถานะเป็น "ยกเลิก"`;
+        if (!confirm(confirmMsg)) return;
+
+        const reason = prompt('กรุณาระบุเหตุผลในการยกเลิก (จำเป็น):');
+        if (!reason) {
+            alert('ต้องระบุเหตุผลในการยกเลิกครับ');
+            return;
+        }
+
+        setLoading(true);
+        const user = sessionStorage.getItem('loggedInUser');
+        const itemsToUpdate = req.items.map(it => ({
+            index: it.index,
+            status: 'ยกเลิก',
+            note: 'ยกเลิกโดยผู้ขอ: ' + reason,
+            qty: it.qty,
+            unit: it.unit
+        }));
+
+        try {
+            const res = await fetch(APPS_SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    action: 'updateStatus',
+                    requestId: id,
+                    updatedBy: user,
+                    items: itemsToUpdate
+                })
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                showStatus(`✅ ยกเลิกคำขอ ${id} สำเร็จ`, 'success');
+                renderTrackingTable();
+            } else {
+                throw new Error(result.message);
+            }
+        } catch (e) {
+            console.error(e);
+            showStatus('❌ ไม่สามารถยกเลิกคำขอได้: ' + e.message, 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // ===== Helpers =====
     function addNewItem() {

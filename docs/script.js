@@ -62,17 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (adminModeToggle) {
         adminModeToggle.addEventListener('change', () => {
             isAdminMode = adminModeToggle.checked;
-            document.body.classList.toggle('admin-theme', isAdminMode);
-            
-            // #2: Update menu name based on mode
-            const menuHomeBtn = document.getElementById('menuHomeBtn');
-            if (menuHomeBtn) {
-                menuHomeBtn.textContent = isAdminMode ? 'Admin Workboard' : 'แบบฟอร์มขอจัดซื้อ';
-            }
-            
-            // Toggle Main Home View between Form and Admin Summary
-            updateHomeView();
-            
+            updateAdminToggleUI();
             renderTrackingTable();
         });
     }
@@ -455,6 +445,22 @@ document.addEventListener('DOMContentLoaded', () => {
         if (adminModeToggle) {
             adminModeToggle.checked = isAdminMode;
             document.body.classList.toggle('admin-theme', isAdminMode);
+            
+            const menuHomeBtn = document.getElementById('menuHomeBtn');
+            const analysisMenuBtn = document.getElementById('analysisMenuBtn');
+            if (menuHomeBtn) {
+                menuHomeBtn.textContent = isAdminMode ? 'Admin Workboard' : 'แบบฟอร์มขอจัดซื้อ';
+            }
+            if (analysisMenuBtn) {
+                if (isAdminMode) {
+                    analysisMenuBtn.classList.remove('hide');
+                    analysisMenuBtn.style.display = 'block';
+                } else {
+                    analysisMenuBtn.classList.add('hide');
+                    analysisMenuBtn.style.display = 'none';
+                }
+            }
+            
             updateHomeView();
         }
     }
@@ -1199,10 +1205,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Call render when switching tabs
     navButtons.forEach(btn => {
         btn.addEventListener('click', () => {
-            if (btn.getAttribute('data-target') === 'trackingSection') {
+            const target = btn.getAttribute('data-target');
+            if (target === 'trackingSection') {
                 renderTrackingTable();
-            } else if (btn.getAttribute('data-target') === 'historySection') {
+            } else if (target === 'historySection') {
                 if (window.renderHistoryTable) window.renderHistoryTable();
+            } else if (target === 'analysisSection') {
+                renderAnalysis();
             }
         });
     });
@@ -1955,7 +1964,196 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Global: remove item row
-window.removeItem = function (button) {
+    // ===== Analysis Dashboard Logic =====
+    let charts = {}; // Store chart instances
+
+    window.renderAnalysis = async function() {
+        const stats = {
+            total: 0,
+            pending: 0,
+            urgent: 0,
+            completed: 0,
+            depts: {},
+            statuses: {},
+            items: {},
+            timeline: {}
+        };
+
+        // Fetch all raw tracking data (including completed/cancelled)
+        // We use the same fetchTrackingData which already returns what we need
+        const rawData = await fetchTrackingData();
+        if (!rawData || rawData.length === 0) return;
+
+        // Process data
+        const uniqueRequests = new Set();
+        const today = new Date();
+        const last7Days = [];
+        for(let i=6; i>=0; i--) {
+            const d = new Date();
+            d.setDate(today.getDate() - i);
+            const dateStr = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+            last7Days.push(dateStr);
+            stats.timeline[dateStr] = 0;
+        }
+
+        rawData.forEach(row => {
+            const rid = row['รหัสคำขอ'];
+            const itName = row['รายละเอียดวัสดุ'];
+            const itStatus = row['สถานะ'];
+            const itPrio = String(row['Priority'] || row['priority'] || row['Piority'] || '').trim();
+            const itDept = row['ชื่อแผนก'];
+            const itDate = new Date(row['วันที่-เวลาที่ขอ']);
+
+            // Unique Requests count
+            uniqueRequests.add(rid);
+
+            // Stats
+            if (itStatus === 'รอจัดซื้อ' || itStatus === 'อยู่ระหว่างจัดซื้อ') stats.pending++;
+            if (itStatus === 'เสร็จสิ้น') stats.completed++;
+            if (itPrio === 'ด่วน') stats.urgent++;
+
+            // By Status
+            stats.statuses[itStatus] = (stats.statuses[itStatus] || 0) + 1;
+
+            // By Dept
+            stats.depts[itDept] = (stats.depts[itDept] || 0) + 1;
+
+            // By Item
+            stats.items[itName] = (stats.items[itName] || 0) + 1;
+
+            // By Timeline (Last 7 days)
+            const dStr = itDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+            if (stats.timeline[dStr] !== undefined) {
+                stats.timeline[dStr]++;
+            }
+        });
+
+        stats.total = uniqueRequests.size;
+
+        // Update Stats UI
+        document.getElementById('statTotalRequests').innerText = stats.total.toLocaleString();
+        document.getElementById('statPendingRequests').innerText = stats.pending.toLocaleString();
+        document.getElementById('statUrgentItems').innerText = stats.urgent.toLocaleString();
+        document.getElementById('statCompletedItems').innerText = stats.completed.toLocaleString();
+
+        // Helper to destroy existing chart
+        const createChart = (id, config) => {
+            if (charts[id]) charts[id].destroy();
+            const ctx = document.getElementById(id).getContext('2d');
+            charts[id] = new Chart(ctx, config);
+        };
+
+        // 1. Dept Chart (Bar)
+        const sortedDepts = Object.entries(stats.depts).sort((a,b) => b[1] - a[1]).slice(0, 5);
+        createChart('deptChart', {
+            type: 'bar',
+            data: {
+                labels: sortedDepts.map(d => d[0]),
+                datasets: [{
+                    label: 'จำนวนรายการพัสดุที่เบิก',
+                    data: sortedDepts.map(d => d[1]),
+                    backgroundColor: 'rgba(79, 70, 229, 0.7)',
+                    borderColor: 'rgba(79, 70, 229, 1)',
+                    borderWidth: 1,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, grid: { display: false } },
+                    x: { grid: { display: false } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // 2. Status Chart (Doughnut)
+        const statusColors = {
+            'รอจัดซื้อ': '#94a3b8',
+            'อยู่ระหว่างจัดซื้อ': '#eab308',
+            'ได้รับบางส่วน': '#10b981',
+            'เสร็จสิ้น': '#22c55e',
+            'ยกเลิก': '#ef4444'
+        };
+        createChart('statusChart', {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(stats.statuses),
+                datasets: [{
+                    data: Object.values(stats.statuses),
+                    backgroundColor: Object.keys(stats.statuses).map(s => statusColors[s] || '#cbd5e1'),
+                    borderWidth: 2,
+                    hoverOffset: 15
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15, font: { size: 11 } } }
+                }
+            }
+        });
+
+        // 3. Top Items (Horizontal Bar)
+        const sortedItems = Object.entries(stats.items).sort((a,b) => b[1] - a[1]).slice(0, 5);
+        createChart('topItemsChart', {
+            type: 'bar',
+            indexAxis: 'y',
+            data: {
+                labels: sortedItems.map(i => i[0]),
+                datasets: [{
+                    label: 'ความถี่การขอ',
+                    data: sortedItems.map(i => i[1]),
+                    backgroundColor: 'rgba(13, 148, 136, 0.7)',
+                    borderColor: 'rgba(13, 148, 136, 1)',
+                    borderWidth: 1,
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { beginAtZero: true, grid: { display: false } },
+                    y: { grid: { display: false } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // 4. Trend Chart (Line)
+        createChart('trendChart', {
+            type: 'line',
+            data: {
+                labels: last7Days,
+                datasets: [{
+                    label: 'จำนวนรายการคำขอ',
+                    data: last7Days.map(d => stats.timeline[d]),
+                    borderColor: 'rgba(79, 70, 229, 1)',
+                    backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#fff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                    x: { grid: { display: false } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    };
+
+    window.removeItem = function (button) {
     const row = button.closest('.item-row');
     const container = document.getElementById('itemsContainer');
     if (container.querySelectorAll('.item-row').length > 1) {

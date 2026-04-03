@@ -7,9 +7,9 @@
     <title>ระบบแจ้งคำขอซื้อวัสดุสำนักงาน PEAจอมทอง</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Prompt:wght@300;400;500;600&display=swap"
-        rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chart.js for Analysis Dashboard -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -52,7 +52,16 @@
             <nav class="sidebar-menu">
                 <button class="sidebar-menu-btn active" data-target="formSection"
                     id="menuHomeBtn">แบบฟอร์มขอจัดซื้อ</button>
-                <button class="sidebar-menu-btn" data-target="trackingSection" id="menuTrackingBtn">ติดตามสถานะ</button>
+                <button class="sidebar-menu-btn" data-target="trackingSection" id="trackingMenuBtn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.5rem; vertical-align:middle;"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                    <span>ติดตามสถานะ</span>
+                </button>
+                
+                <button class="sidebar-menu-btn admin-only hide" data-target="analysisSection" id="analysisMenuBtn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.5rem; vertical-align:middle;"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg>
+                    <span>วิเคราะห์ภาพรวม</span>
+                </button>
+                
                 <button class="sidebar-menu-btn" data-target="historySection">ประวัติ</button>
             </nav>
             <div class="sidebar-user">
@@ -260,6 +269,76 @@
                         <!-- JS will populate separate cards for each status here -->
                         <div style="text-align:center; padding:2rem; color:var(--text-muted);">
                             กำลังโหลดข้อมูล...
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Analysis Section (Admin Only) -->
+                <section id="analysisSection" class="tab-pane hide">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 2rem;">
+                        <div>
+                            <h1 style="color:var(--text-main); font-size:1.6rem; margin-bottom:0.2rem;">📈 วิเคราะห์ภาพรวม</h1>
+                            <p style="color:var(--text-muted); font-size:0.95rem;">สรุปสถิติจัดซื้อและแนวโน้มการใช้วัสดุ</p>
+                        </div>
+                        <button class="btn btn-outline" onclick="renderAnalysis()" style="background:white;">
+                            <span>🔄 รีเฟรชข้อมูล</span>
+                        </button>
+                    </div>
+
+                    <!-- Stats Grid -->
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; margin-bottom: 2rem;">
+                        <div class="card" style="padding: 1.5rem; border-left: 5px solid var(--accent-color);">
+                            <div style="color:var(--text-muted); font-size:0.85rem; font-weight:500;">คำขอทั้งหมด (รวม)</div>
+                            <div id="statTotalRequests" style="font-size:1.8rem; font-weight:700; color:var(--text-main); margin-top:0.4rem;">0</div>
+                        </div>
+                        <div class="card" style="padding: 1.5rem; border-left: 5px solid #facc15;">
+                            <div style="color:var(--text-muted); font-size:0.85rem; font-weight:500;">รอดำเนินการ</div>
+                            <div id="statPendingRequests" style="font-size:1.8rem; font-weight:700; color:var(--text-main); margin-top:0.4rem;">0</div>
+                        </div>
+                        <div class="card" style="padding: 1.5rem; border-left: 5px solid #ef4444;">
+                            <div style="color:var(--text-muted); font-size:0.85rem; font-weight:500;">รายการด่วน (Urgent)</div>
+                            <div id="statUrgentItems" style="font-size:1.8rem; font-weight:700; color:#ef4444; margin-top:0.4rem;">0</div>
+                        </div>
+                        <div class="card" style="padding: 1.5rem; border-left: 5px solid #10b981;">
+                            <div style="color:var(--text-muted); font-size:0.85rem; font-weight:500;">เสร็จสิ้นแล้ว</div>
+                            <div id="statCompletedItems" style="font-size:1.8rem; font-weight:700; color:#10b981; margin-top:0.4rem;">0</div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Grid -->
+                    <div style="display:grid; grid-template-columns: 1.5fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+                        <!-- Main Chart -->
+                        <div class="card" style="padding: 1.5rem;">
+                            <h3 style="font-size:1rem; margin-bottom:1.5rem; display:flex; align-items:center; gap:8px;">
+                                📊 5 อันดับแผนกที่เบิกเยอะที่สุด
+                            </h3>
+                            <div style="height: 300px; position: relative;">
+                                <canvas id="deptChart"></canvas>
+                            </div>
+                        </div>
+                        <!-- Status Distribution -->
+                        <div class="card" style="padding: 1.5rem;">
+                            <h3 style="font-size:1rem; margin-bottom:1.5rem;">🍩 สัดส่วนสถานะคำขอ</h3>
+                            <div style="height: 300px; position: relative;">
+                                <canvas id="statusChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                        <!-- Top Items -->
+                        <div class="card" style="padding: 1.5rem;">
+                            <h3 style="font-size:1rem; margin-bottom:1.5rem;">🔥 5 อันดับวัสดุยอดฮิต (ตามจำนวนครั้งที่ขอ)</h3>
+                            <div style="height: 300px; position: relative;">
+                                <canvas id="topItemsChart"></canvas>
+                            </div>
+                        </div>
+                        <!-- Weekly Trend -->
+                        <div class="card" style="padding: 1.5rem;">
+                            <h3 style="font-size:1rem; margin-bottom:1.5rem;">📈 แนวโน้มการเบิก (7 วันล่าสุด)</h3>
+                            <div style="height: 300px; position: relative;">
+                                <canvas id="trendChart"></canvas>
+                            </div>
                         </div>
                     </div>
                 </section>

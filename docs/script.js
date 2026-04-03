@@ -1968,6 +1968,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let charts = {}; // Store chart instances
 
     window.renderAnalysis = async function() {
+        console.log("Starting Analysis Rendering...");
         const stats = {
             total: 0,
             pending: 0,
@@ -1979,30 +1980,53 @@ document.addEventListener('DOMContentLoaded', () => {
             timeline: {}
         };
 
-        // Fetch all raw tracking data (including completed/cancelled)
-        // We use the same fetchTrackingData which already returns what we need
+        // Fetch using existing admin-capable function
         const rawData = await fetchTrackingData();
-        if (!rawData || rawData.length === 0) return;
+        console.log("Raw Data for Analysis:", rawData ? rawData.length : 0, "rows");
+        
+        if (!rawData || rawData.length === 0) {
+            console.warn("No data returned for analysis.");
+            return;
+        }
 
         // Process data
         const uniqueRequests = new Set();
         const today = new Date();
-        const last7Days = [];
+        
+        // Prepare timeline labels (Last 7 days)
+        const last7DaysLabels = [];
+        const last7DaysDateStrs = [];
         for(let i=6; i>=0; i--) {
             const d = new Date();
             d.setDate(today.getDate() - i);
-            const dateStr = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
-            last7Days.push(dateStr);
-            stats.timeline[dateStr] = 0;
+            const dateStrLabel = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+            const dateStrKey = d.toLocaleDateString('en-CA'); // YYYY-MM-DD
+            last7DaysLabels.push(dateStrLabel);
+            last7DaysDateStrs.push(dateStrKey);
+            stats.timeline[dateStrKey] = 0;
         }
 
         rawData.forEach(row => {
-            const rid = row['รหัสคำขอ'];
-            const itName = row['รายละเอียดวัสดุ'];
-            const itStatus = row['สถานะ'];
-            const itPrio = String(row['Priority'] || row['priority'] || row['Piority'] || '').trim();
-            const itDept = row['ชื่อแผนก'];
-            const itDate = new Date(row['วันที่-เวลาที่ขอ']);
+            // Flexible key mapping (handles spaces/variations)
+            const getVal = (possibleKeys) => {
+                for (let k of possibleKeys) {
+                    if (row[k] !== undefined) return row[k];
+                    // Also try trimmed version of keys in row
+                    const foundKey = Object.keys(row).find(rk => rk.trim() === k.trim());
+                    if (foundKey) return row[foundKey];
+                }
+                return '';
+            };
+
+            const rid = getVal(['รหัสคำขอ', 'requestId', 'ID']);
+            const itName = getVal(['รายละเอียดวัสดุ', 'itemName', 'Material']);
+            const itStatus = String(getVal(['สถานะ', 'status'])).trim();
+            const itPrio = String(getVal(['Priority', 'priority', 'ความเร่งด่วน'])).trim();
+            const itDept = getVal(['ชื่อแผนก', 'deptName', 'Department']) || 'ไม่ระบุ';
+            const rawDate = getVal(['วันที่-เวลาที่ขอ', 'timestamp', 'date']);
+            const itDate = rawDate ? new Date(rawDate) : null;
+
+            if (!rid) return; // Skip invalid rows
 
             // Unique Requests count
             uniqueRequests.add(rid);
@@ -2018,30 +2042,42 @@ document.addEventListener('DOMContentLoaded', () => {
             // By Dept
             stats.depts[itDept] = (stats.depts[itDept] || 0) + 1;
 
-            // By Item
-            stats.items[itName] = (stats.items[itName] || 0) + 1;
+            // By Item (Top requested)
+            if (itName) {
+                stats.items[itName] = (stats.items[itName] || 0) + 1;
+            }
 
             // By Timeline (Last 7 days)
-            const dStr = itDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
-            if (stats.timeline[dStr] !== undefined) {
-                stats.timeline[dStr]++;
+            if (itDate) {
+                const dKey = itDate.toLocaleDateString('en-CA');
+                if (stats.timeline[dKey] !== undefined) {
+                    stats.timeline[dKey]++;
+                }
             }
         });
 
         stats.total = uniqueRequests.size;
 
         // Update Stats UI
-        document.getElementById('statTotalRequests').innerText = stats.total.toLocaleString();
-        document.getElementById('statPendingRequests').innerText = stats.pending.toLocaleString();
-        document.getElementById('statUrgentItems').innerText = stats.urgent.toLocaleString();
-        document.getElementById('statCompletedItems').innerText = stats.completed.toLocaleString();
+        const updateText = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.innerText = val.toLocaleString();
+        };
+        updateText('statTotalRequests', stats.total);
+        updateText('statPendingRequests', stats.pending);
+        updateText('statUrgentItems', stats.urgent);
+        updateText('statCompletedItems', stats.completed);
 
-        // Helper to destroy existing chart
+        // Chart.js helper
         const createChart = (id, config) => {
+            const canvas = document.getElementById(id);
+            if (!canvas) return;
             if (charts[id]) charts[id].destroy();
-            const ctx = document.getElementById(id).getContext('2d');
+            const ctx = canvas.getContext('2d');
             charts[id] = new Chart(ctx, config);
         };
+
+        const chartColors = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316', '#eab308'];
 
         // 1. Dept Chart (Bar)
         const sortedDepts = Object.entries(stats.depts).sort((a,b) => b[1] - a[1]).slice(0, 5);
@@ -2050,19 +2086,19 @@ document.addEventListener('DOMContentLoaded', () => {
             data: {
                 labels: sortedDepts.map(d => d[0]),
                 datasets: [{
-                    label: 'จำนวนรายการพัสดุที่เบิก',
+                    label: 'จำนวนรายการพัสดุ',
                     data: sortedDepts.map(d => d[1]),
-                    backgroundColor: 'rgba(79, 70, 229, 0.7)',
-                    borderColor: 'rgba(79, 70, 229, 1)',
-                    borderWidth: 1,
-                    borderRadius: 6
+                    backgroundColor: 'rgba(99, 102, 241, 0.8)',
+                    hoverBackgroundColor: '#4f46e5',
+                    borderRadius: 8,
+                    barThickness: 40
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                scales: {
-                    y: { beginAtZero: true, grid: { display: false } },
+                scales: { 
+                    y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } },
                     x: { grid: { display: false } }
                 },
                 plugins: { legend: { display: false } }
@@ -2072,28 +2108,29 @@ document.addEventListener('DOMContentLoaded', () => {
         // 2. Status Chart (Doughnut)
         const statusColors = {
             'รอจัดซื้อ': '#94a3b8',
-            'อยู่ระหว่างจัดซื้อ': '#eab308',
-            'ได้รับบางส่วน': '#10b981',
-            'เสร็จสิ้น': '#22c55e',
+            'อยู่ระหว่างจัดซื้อ': '#facc15',
+            'ได้รับบางส่วน': '#3b82f6',
+            'เสร็จสิ้น': '#10b981',
             'ยกเลิก': '#ef4444'
         };
+        const statusLabels = Object.keys(stats.statuses);
         createChart('statusChart', {
             type: 'doughnut',
             data: {
-                labels: Object.keys(stats.statuses),
+                labels: statusLabels,
                 datasets: [{
                     data: Object.values(stats.statuses),
-                    backgroundColor: Object.keys(stats.statuses).map(s => statusColors[s] || '#cbd5e1'),
-                    borderWidth: 2,
-                    hoverOffset: 15
+                    backgroundColor: statusLabels.map(s => statusColors[s] || '#cbd5e1'),
+                    hoverOffset: 12,
+                    borderWidth: 0
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                cutout: '65%',
+                cutout: '70%',
                 plugins: {
-                    legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15, font: { size: 11 } } }
+                    legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20, font: { family: 'Prompt', size: 12 } } }
                 }
             }
         });
@@ -2106,19 +2143,19 @@ document.addEventListener('DOMContentLoaded', () => {
             data: {
                 labels: sortedItems.map(i => i[0]),
                 datasets: [{
-                    label: 'ความถี่การขอ',
+                    label: 'จำนวนครั้งที่ขอ',
                     data: sortedItems.map(i => i[1]),
-                    backgroundColor: 'rgba(13, 148, 136, 0.7)',
-                    borderColor: 'rgba(13, 148, 136, 1)',
-                    borderWidth: 1,
-                    borderRadius: 4
+                    backgroundColor: 'rgba(20, 184, 166, 0.8)',
+                    hoverBackgroundColor: '#0d9488',
+                    borderRadius: 6,
+                    barThickness: 25
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                scales: {
-                    x: { beginAtZero: true, grid: { display: false } },
+                scales: { 
+                    x: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } },
                     y: { grid: { display: false } }
                 },
                 plugins: { legend: { display: false } }
@@ -2129,23 +2166,25 @@ document.addEventListener('DOMContentLoaded', () => {
         createChart('trendChart', {
             type: 'line',
             data: {
-                labels: last7Days,
+                labels: last7DaysLabels,
                 datasets: [{
                     label: 'จำนวนรายการคำขอ',
-                    data: last7Days.map(d => stats.timeline[d]),
-                    borderColor: 'rgba(79, 70, 229, 1)',
-                    backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                    data: last7DaysDateStrs.map(dStr => stats.timeline[dStr]),
+                    borderColor: '#6366f1',
+                    backgroundColor: 'rgba(99, 102, 241, 0.1)',
                     fill: true,
                     tension: 0.4,
-                    pointRadius: 4,
-                    pointBackgroundColor: '#fff'
+                    pointRadius: 6,
+                    pointHoverRadius: 8,
+                    pointBackgroundColor: '#fff',
+                    pointBorderWidth: 3
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                scales: {
-                    y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                scales: { 
+                    y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } },
                     x: { grid: { display: false } }
                 },
                 plugins: { legend: { display: false } }

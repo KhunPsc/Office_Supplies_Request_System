@@ -273,75 +273,80 @@
                     </div>
                 </section>
 
-                <!-- Analysis Section (Admin Only) -->
-                <section id="analysisSection" class="tab-pane hide">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 2rem;">
-                        <div>
-                            <h1 style="color:var(--text-main); font-size:1.6rem; margin-bottom:0.2rem;">📈 วิเคราะห์ภาพรวม</h1>
-                            <p style="color:var(--text-muted); font-size:0.95rem;">สรุปสถิติจัดซื้อและแนวโน้มการใช้วัสดุ</p>
-                        </div>
-                        <button class="btn btn-outline" onclick="renderAnalysis()" style="background:white;">
-                            <span>🔄 รีเฟรชข้อมูล</span>
-                        </button>
-                    </div>
+        <!-- Analysis Section (Admin Only) -->
+        <section id="analysisSection" class="tab-pane hide">
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #e2e8f0;">
+                <div>
+                    <h1 style="color:var(--text-main); font-size:1.75rem; font-weight:700; margin-bottom:0.25rem;">📈 วิเคราะห์ภาพรวม</h1>
+                    <p style="color:var(--text-muted); font-size:0.95rem; display:flex; align-items:center; gap:6px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                        สรุปสถิติจัดซื้อและปริมาณการใช้วัสดุรายแผนก
+                    </p>
+                </div>
+                <button class="btn btn-outline" onclick="renderAnalysis()" style="background:white; border-radius: 8px; padding: 0.6rem 1.25rem; font-weight: 500; display: flex; align-items:center; gap: 8px;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+                    รีเฟรชข้อมูลล่าสุด
+                </button>
+            </div>
 
-                    <!-- Stats Grid -->
-                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; margin-bottom: 2rem;">
-                        <div class="card" style="padding: 1.5rem; border-left: 5px solid var(--accent-color);">
-                            <div style="color:var(--text-muted); font-size:0.85rem; font-weight:500;">คำขอทั้งหมด (รวม)</div>
-                            <div id="statTotalRequests" style="font-size:1.8rem; font-weight:700; color:var(--text-main); margin-top:0.4rem;">0</div>
-                        </div>
-                        <div class="card" style="padding: 1.5rem; border-left: 5px solid #facc15;">
-                            <div style="color:var(--text-muted); font-size:0.85rem; font-weight:500;">รอดำเนินการ</div>
-                            <div id="statPendingRequests" style="font-size:1.8rem; font-weight:700; color:var(--text-main); margin-top:0.4rem;">0</div>
-                        </div>
-                        <div class="card" style="padding: 1.5rem; border-left: 5px solid #ef4444;">
-                            <div style="color:var(--text-muted); font-size:0.85rem; font-weight:500;">รายการด่วน (Urgent)</div>
-                            <div id="statUrgentItems" style="font-size:1.8rem; font-weight:700; color:#ef4444; margin-top:0.4rem;">0</div>
-                        </div>
-                        <div class="card" style="padding: 1.5rem; border-left: 5px solid #10b981;">
-                            <div style="color:var(--text-muted); font-size:0.85rem; font-weight:500;">เสร็จสิ้นแล้ว</div>
-                            <div id="statCompletedItems" style="font-size:1.8rem; font-weight:700; color:#10b981; margin-top:0.4rem;">0</div>
-                        </div>
-                    </div>
+            <!-- Stats Grid -->
+            <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; margin-bottom: 2.5rem;">
+                <div class="card" style="padding: 1.5rem; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); position:relative; overflow:hidden;">
+                    <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:var(--accent-color);"></div>
+                    <div style="color:var(--text-muted); font-size:0.85rem; font-weight:600; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px;">คำขอทั้งหมด</div>
+                    <div id="statTotalRequests" style="font-size:2.2rem; font-weight:800; color:var(--text-main);">0</div>
+                </div>
+                <div class="card" style="padding: 1.5rem; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); position:relative; overflow:hidden;">
+                    <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:#facc15;"></div>
+                    <div style="color:var(--text-muted); font-size:0.85rem; font-weight:600; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px;">งานรอดำเนินการ</div>
+                    <div id="statPendingRequests" style="font-size:2.2rem; font-weight:800; color:#b45309;">0</div>
+                </div>
+                <div class="card" style="padding: 1.5rem; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); position:relative; overflow:hidden;">
+                    <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:#ef4444;"></div>
+                    <div style="color:var(--text-muted); font-size:0.85rem; font-weight:600; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px;">รายการด่วนพิเศษ</div>
+                    <div id="statUrgentItems" style="font-size:2.2rem; font-weight:800; color:#ef4444;">0</div>
+                </div>
+                <div class="card" style="padding: 1.5rem; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); position:relative; overflow:hidden;">
+                    <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:#10b981;"></div>
+                    <div style="color:var(--text-muted); font-size:0.85rem; font-weight:600; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px;">เสร็จสิ้นแล้ว</div>
+                    <div id="statCompletedItems" style="font-size:2.2rem; font-weight:800; color:#10b981;">0</div>
+                </div>
+            </div>
 
-                    <!-- Charts Grid -->
-                    <div style="display:grid; grid-template-columns: 1.5fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
-                        <!-- Main Chart -->
-                        <div class="card" style="padding: 1.5rem;">
-                            <h3 style="font-size:1rem; margin-bottom:1.5rem; display:flex; align-items:center; gap:8px;">
-                                📊 5 อันดับแผนกที่เบิกเยอะที่สุด
-                            </h3>
-                            <div style="height: 300px; position: relative;">
-                                <canvas id="deptChart"></canvas>
-                            </div>
-                        </div>
-                        <!-- Status Distribution -->
-                        <div class="card" style="padding: 1.5rem;">
-                            <h3 style="font-size:1rem; margin-bottom:1.5rem;">🍩 สัดส่วนสถานะคำขอ</h3>
-                            <div style="height: 300px; position: relative;">
-                                <canvas id="statusChart"></canvas>
-                            </div>
-                        </div>
+            <!-- Main Visuals Container -->
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                <div class="card" style="padding: 1.75rem; border:none; box-shadow: 0 10px 25px rgba(0,0,0,0.04);">
+                    <h3 style="font-size:1.1rem; margin-bottom:1.5rem; color:var(--text-main); font-weight:700;">📊 5 อันดับแผนกที่เบิกพัสดุเยอะที่สุด</h3>
+                    <div style="height: 350px; width: 100%;">
+                        <canvas id="deptChart"></canvas>
                     </div>
+                </div>
+                <div class="card" style="padding: 1.75rem; border:none; box-shadow: 0 10px 25px rgba(0,0,0,0.04);">
+                    <h3 style="font-size:1.1rem; margin-bottom:1.5rem; color:var(--text-main); font-weight:700;">🍩 สัดส่วนสถานะการติดตามงาน</h3>
+                    <div style="height: 350px; width: 100%;">
+                        <canvas id="statusChart"></canvas>
+                    </div>
+                </div>
+            </div>
 
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
-                        <!-- Top Items -->
-                        <div class="card" style="padding: 1.5rem;">
-                            <h3 style="font-size:1rem; margin-bottom:1.5rem;">🔥 5 อันดับวัสดุยอดฮิต (ตามจำนวนครั้งที่ขอ)</h3>
-                            <div style="height: 300px; position: relative;">
-                                <canvas id="topItemsChart"></canvas>
-                            </div>
-                        </div>
-                        <!-- Weekly Trend -->
-                        <div class="card" style="padding: 1.5rem;">
-                            <h3 style="font-size:1rem; margin-bottom:1.5rem;">📈 แนวโน้มการเบิก (7 วันล่าสุด)</h3>
-                            <div style="height: 300px; position: relative;">
-                                <canvas id="trendChart"></canvas>
-                            </div>
-                        </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                <div class="card" style="padding: 1.75rem; border:none; box-shadow: 0 10px 25px rgba(0,0,0,0.04);">
+                    <h3 style="font-size:1.1rem; margin-bottom:1.5rem; color:var(--text-main); font-weight:700;">🔥 พัสดุยอดฮิต (เรียงตามความถี่)</h3>
+                    <div style="height: 320px; width: 100%;">
+                        <canvas id="topItemsChart"></canvas>
                     </div>
-                </section>
+                </div>
+                <div class="card" style="padding: 1.75rem; border:none; box-shadow: 0 10px 25px rgba(0,0,0,0.04);">
+                    <h3 style="font-size:1.1rem; margin-bottom:1.5rem; color:var(--text-main); font-weight:700;">📈 แนวโน้มการส่งคำขอ 7 วันล่าสุด</h3>
+                    <div style="height: 320px; width: 100%;">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div style="margin-top: 2rem; text-align: center; color: var(--text-muted); font-size: 0.8rem;">
+                ข้อมูลประมวลผลอัตโนมัติจากไฟล์ Google Sheets ล่าสุด
+            </div>
+        </section>
 
                 <!-- ===== TAB 3: History ===== -->
                 <section id="historySection" class="tab-pane hide" style="display: none;">

@@ -411,14 +411,14 @@
                         <p style="color: #555; text-align: center; font-size: 0.95rem;" id="printDateString"></p>
                     </div>
                     
-                    <table style="width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 2rem; border: 1px solid #ddd; word-break: break-word;" border="1" cellpadding="8" cellspacing="0" bordercolor="#ddd">
+                    <table style="width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 2rem; border: 1px solid #ddd; word-break: break-all; overflow-wrap: anywhere;" border="1" cellpadding="8" cellspacing="0" bordercolor="#ddd">
                         <thead>
                             <tr style="background-color: #f1f5f9;">
-                                <th style="width: 5%; text-align: center; padding: 10px;">ลำดับ</th>
-                                <th style="width: 32%; text-align: left; padding: 10px;">รายละเอียดวัสดุ</th>
-                                <th style="width: 13%; text-align: center; padding: 10px;">จำนวน/หน่วย</th>
+                                <th style="width: 8%; text-align: center; padding: 10px;">ลำดับ</th>
+                                <th style="width: 30%; text-align: left; padding: 10px;">รายละเอียดวัสดุ</th>
+                                <th style="width: 17%; text-align: center; padding: 10px;">จำนวน/หน่วย</th>
                                 <th style="width: 15%; text-align: center; padding: 10px;">แผนก/ผู้ขอ</th>
-                                <th style="width: 20%; text-align: center; padding: 10px;">รหัสคำขอ</th>
+                                <th style="width: 15%; text-align: center; padding: 10px;">รหัสคำขอ</th>
                                 <th style="width: 15%; text-align: center; padding: 10px;">หมายเหตุ</th>
                             </tr>
                         </thead>
@@ -559,8 +559,8 @@
 
         /* Fix table cell overflow */
         #printableWorksheet td {
-            word-break: break-word;
-            overflow-wrap: break-word;
+            word-break: break-all;
+            overflow-wrap: anywhere;
             vertical-align: top;
         }
     </style>

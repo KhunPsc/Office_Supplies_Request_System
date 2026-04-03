@@ -285,124 +285,78 @@
 
                 <!-- Analysis Section (Admin Only) -->
                 <section id="analysisSection" class="tab-pane hide">
-                    <div
-                        style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #e2e8f0;">
-                        <div>
-                            <h1
-                                style="color:var(--text-main); font-size:1.75rem; font-weight:700; margin-bottom:0.25rem;">
-                                📈 วิเคราะห์ภาพรวม</h1>
-                            <p
-                                style="color:var(--text-muted); font-size:0.95rem; display:flex; align-items:center; gap:6px;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2">
-                                    <circle cx="12" cy="12" r="10" />
-                                    <path d="M12 16v-4" />
-                                    <path d="M12 8h.01" />
+                    <div class="analytics-container">
+                        <div class="analytics-header">
+                            <div>
+                                <h1 style="color:var(--text-main); font-size:1.75rem; font-weight:700; margin:0;">📈 แดชบอร์ดสรุปผล (Analytics)</h1>
+                                <p style="color:var(--text-muted); font-size:0.95rem; margin-top:0.25rem;">ข้อมูลสถิติการใช้งานวัสดุและปริมาณคำขอสะสมทั้งหมด</p>
+                            </div>
+                            <button class="btn btn-outline" onclick="renderAnalysis()" style="background:white; border-radius: 12px; font-weight: 500; height: 42px;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle; margin-right:4px;">
+                                    <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
                                 </svg>
-                                สรุปสถิติจัดซื้อและปริมาณการใช้วัสดุรายแผนก
-                            </p>
+                                รีเฟรชข้อมูล
+                            </button>
                         </div>
-                        <button class="btn btn-outline" onclick="renderAnalysis()"
-                            style="background:white; border-radius: 8px; padding: 0.6rem 1.25rem; font-weight: 500; display: flex; align-items:center; gap: 8px;">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                stroke-width="2">
-                                <path d="M23 4v6h-6" />
-                                <path d="M1 20v-6h6" />
-                                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
-                            </svg>
-                            รีเฟรชข้อมูลล่าสุด
-                        </button>
-                    </div>
 
-                    <!-- Stats Grid -->
-                    <div
-                        style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; margin-bottom: 2.5rem;">
-                        <div class="card"
-                            style="padding: 1.5rem; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); position:relative; overflow:hidden;">
-                            <div
-                                style="position:absolute; top:0; left:0; width:4px; height:100%; background:var(--accent-color);">
+                        <!-- Stats Grid -->
+                        <div class="stats-grid">
+                            <div class="stat-card stat-card-total">
+                                <span class="label">คำขอทั้งหมด</span>
+                                <span class="value" id="statTotalRequests">0</span>
                             </div>
-                            <div
-                                style="color:var(--text-muted); font-size:0.85rem; font-weight:600; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px;">
-                                คำขอทั้งหมด</div>
-                            <div id="statTotalRequests"
-                                style="font-size:2.2rem; font-weight:800; color:var(--text-main);">0</div>
-                        </div>
-                        <div class="card"
-                            style="padding: 1.5rem; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); position:relative; overflow:hidden;">
-                            <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:#facc15;">
+                            <div class="stat-card stat-card-pending">
+                                <span class="label">รอดำเนินการ</span>
+                                <span class="value" id="statPendingRequests">0</span>
                             </div>
-                            <div
-                                style="color:var(--text-muted); font-size:0.85rem; font-weight:600; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px;">
-                                งานรอดำเนินการ</div>
-                            <div id="statPendingRequests" style="font-size:2.2rem; font-weight:800; color:#b45309;">0
+                            <div class="stat-card stat-card-urgent">
+                                <span class="label">รายการด่วน</span>
+                                <span class="value" id="statUrgentItems">0</span>
+                            </div>
+                            <div class="stat-card stat-card-done">
+                                <span class="label">สำเร็จแล้ว</span>
+                                <span class="value" id="statCompletedItems">0</span>
                             </div>
                         </div>
-                        <div class="card"
-                            style="padding: 1.5rem; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); position:relative; overflow:hidden;">
-                            <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:#ef4444;">
-                            </div>
-                            <div
-                                style="color:var(--text-muted); font-size:0.85rem; font-weight:600; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px;">
-                                รายการด่วนพิเศษ</div>
-                            <div id="statUrgentItems" style="font-size:2.2rem; font-weight:800; color:#ef4444;">0</div>
-                        </div>
-                        <div class="card"
-                            style="padding: 1.5rem; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); position:relative; overflow:hidden;">
-                            <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:#10b981;">
-                            </div>
-                            <div
-                                style="color:var(--text-muted); font-size:0.85rem; font-weight:600; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px;">
-                                เสร็จสิ้นแล้ว</div>
-                            <div id="statCompletedItems" style="font-size:2.2rem; font-weight:800; color:#10b981;">0
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Main Visuals Container -->
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
-                        <div class="card"
-                            style="padding: 1.75rem; border:none; box-shadow: 0 10px 25px rgba(0,0,0,0.04);">
-                            <h3
-                                style="font-size:1.1rem; margin-bottom:1.5rem; color:var(--text-main); font-weight:700;">
-                                📊 5 อันดับแผนกที่เบิกพัสดุเยอะที่สุด</h3>
-                            <div style="height: 350px; width: 100%;">
-                                <canvas id="deptChart"></canvas>
+                        <!-- Charts Grid -->
+                        <div class="charts-grid">
+                            <!-- Trend Chart -->
+                            <div class="chart-card" style="grid-column: span 2;">
+                                <h3>📈 แนวโน้มคำขอ (7 วันล่าสุด)</h3>
+                                <div class="chart-container">
+                                    <canvas id="trendChart"></canvas>
+                                </div>
                             </div>
-                        </div>
-                        <div class="card"
-                            style="padding: 1.75rem; border:none; box-shadow: 0 10px 25px rgba(0,0,0,0.04);">
-                            <h3
-                                style="font-size:1.1rem; margin-bottom:1.5rem; color:var(--text-main); font-weight:700;">
-                                🍩 สัดส่วนสถานะการติดตามงาน</h3>
-                            <div style="height: 350px; width: 100%;">
-                                <canvas id="statusChart"></canvas>
-                            </div>
-                        </div>
-                    </div>
 
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
-                        <div class="card"
-                            style="padding: 1.75rem; border:none; box-shadow: 0 10px 25px rgba(0,0,0,0.04);">
-                            <h3
-                                style="font-size:1.1rem; margin-bottom:1.5rem; color:var(--text-main); font-weight:700;">
-                                🔥 พัสดุยอดฮิต (เรียงตามความถี่)</h3>
-                            <div style="height: 320px; width: 100%;">
-                                <canvas id="topItemsChart"></canvas>
+                            <!-- Dept Chart -->
+                            <div class="chart-card">
+                                <h3>🏢 ปริมาณการขอรายแผนก (Top 5)</h3>
+                                <div class="chart-container">
+                                    <canvas id="deptChart"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- Status Chart -->
+                            <div class="chart-card">
+                                <h3>📊 สัดส่วนสถานะ (Status)</h3>
+                                <div class="chart-container">
+                                    <canvas id="statusChart"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- Top Items Chart -->
+                            <div class="chart-card" style="grid-column: span 2;">
+                                <h3>🏷️ 5 อันดับวัสดุที่ขอมากที่สุด</h3>
+                                <div class="chart-container">
+                                    <canvas id="topItemsChart"></canvas>
+                                </div>
                             </div>
                         </div>
-                        <div class="card"
-                            style="padding: 1.75rem; border:none; box-shadow: 0 10px 25px rgba(0,0,0,0.04);">
-                            <h3
-                                style="font-size:1.1rem; margin-bottom:1.5rem; color:var(--text-main); font-weight:700;">
-                                📈 แนวโน้มการส่งคำขอ 7 วันล่าสุด</h3>
-                            <div style="height: 320px; width: 100%;">
-                                <canvas id="trendChart"></canvas>
-                            </div>
+                        
+                        <div style="margin-top: 2.5rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; border-top: 1px solid #f1f5f9; padding-top: 1.5rem;">
+                            ประมวลผลข้อมูลอัตโนมัติจากระบบฐานข้อมูลวัสดุ
                         </div>
-                    </div>
-                    <div style="margin-top: 2rem; text-align: center; color: var(--text-muted); font-size: 0.8rem;">
-                        ข้อมูลประมวลผลอัตโนมัติจากไฟล์ Google Sheets ล่าสุด
                     </div>
                 </section>
 

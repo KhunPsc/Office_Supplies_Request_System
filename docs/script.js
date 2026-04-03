@@ -1,34 +1,294 @@
+const userMapping = {
+    'sra141': { code: '01', name: 'ผบส.', role: 'user' },
+    'ssa141': { code: '02', name: 'ผสน.', role: 'admin' },
+    'mca141': { code: '03', name: 'ผบร.', role: 'user' },
+    'cma141': { code: '04', name: 'ผกส.', role: 'user' },
+    'oma141': { code: '05', name: 'ผปบ.', role: 'user' },
+    'mta141': { code: '06', name: 'ผมต.', role: 'user' },
+    'dla141': { code: '07', name: 'กฟส.ดอยหล่อ', role: 'user' },
+    'mja141': { code: '08', name: 'กฟส.แม่แจ่ม', role: 'user' },
+};
+
+const DEPT_MAP = {
+    '01': 'ผบส.',
+    '02': 'ผสน.',
+    '03': 'ผบร.',
+    '04': 'ผกส.',
+    '05': 'ผปบ.',
+    '06': 'ผมต.',
+    '07': 'กฟส.ดอยหล่อ',
+    '08': 'กฟส.แม่แจ่ม'
+};
+
+const STATUS_MAP = {
+    'รอจัดซื้อ': { cls: 'status-waiting', icon: '📦' },
+    'อยู่ระหว่างจัดซื้อ': { cls: 'status-processing', icon: '⏳' },
+    'ได้รับบางส่วน': { cls: 'status-partial', icon: '🌗' },
+    'เสร็จสิ้น': { cls: 'status-done', icon: '✅' },
+    'ยกเลิก': { cls: 'status-cancelled', icon: '❌' }
+};
+
+let isAdminMode = false;
+let currentDeptCode = '';
+let editingRequestId = null;
+let currentRequestsData = {};
+let pendingPayload = null;
+let charts = {};
+let sortState = { key: 'date', direction: 'desc' };
+let adminPriorityFilter = 'ทั้งหมด';
+let adminSortState = { key: 'date', direction: 'asc' };
+
+function getAppScriptUrl() {
+    if (typeof window.APPS_SCRIPT_URL !== 'undefined' && window.APPS_SCRIPT_URL) return window.APPS_SCRIPT_URL;
+    if (typeof APPS_SCRIPT_URL !== 'undefined' && APPS_SCRIPT_URL) return APPS_SCRIPT_URL;
+    return '';
+}
+
+async function fetchTrackingData() {
+    const appScriptUrl = getAppScriptUrl();
+    if (!appScriptUrl) return [];
+
+    const user = sessionStorage.getItem('loggedInUser');
+    if (!user || !userMapping[user]) return [];
+
+    const deptCode = userMapping[user].code;
+    const role = isAdminMode ? 'admin' : 'user';
+
+    try {
+        const url = `${appScriptUrl}?action=tracking&deptCode=${encodeURIComponent(deptCode)}&role=${encodeURIComponent(role)}&t=${Date.now()}`;
+        const res = await fetch(url);
+        const result = await res.json();
+        return result.status === 'success' ? result.data : [];
+    } catch (err) {
+        console.error('Fetch Error:', err);
+        return [];
+    }
+}
+
+window.renderAnalysis = async function () {
+    console.log('Starting Analysis Rendering...');
+    const stats = {
+        total: 0,
+        pending: 0,
+        urgent: 0,
+        completed: 0,
+        depts: {},
+        statuses: {},
+        items: {},
+        timeline: {}
+    };
+
+    const rawData = await fetchTrackingData();
+    console.log('Raw Data for Analysis:', rawData ? rawData.length : 0, 'rows');
+
+    if (!rawData || rawData.length === 0) {
+        console.warn('No data returned for analysis.');
+        return;
+    }
+
+    const uniqueRequests = new Set();
+    const today = new Date();
+    const last7DaysLabels = [];
+    const last7DaysDateStrs = [];
+
+    for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(today.getDate() - i);
+        const dateStrLabel = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+        const dateStrKey = d.toLocaleDateString('en-CA');
+        last7DaysLabels.push(dateStrLabel);
+        last7DaysDateStrs.push(dateStrKey);
+        stats.timeline[dateStrKey] = 0;
+    }
+
+    rawData.forEach(row => {
+        const getVal = (possibleKeys) => {
+            for (const k of possibleKeys) {
+                if (row[k] !== undefined) return row[k];
+                const foundKey = Object.keys(row).find(rk => rk.trim() === k.trim());
+                if (foundKey) return row[foundKey];
+            }
+            return '';
+        };
+
+        const rid = getVal(['รหัสคำขอ', 'requestId', 'ID']);
+        const itName = getVal(['รายละเอียดวัสดุ', 'itemName', 'Material']);
+        const itStatus = String(getVal(['สถานะ', 'status'])).trim();
+        const itPrio = String(getVal(['Priority', 'priority', 'ความเร่งด่วน'])).trim();
+        const itDept = getVal(['ชื่อแผนก', 'deptName', 'Department']) || 'ไม่ระบุ';
+        const rawDate = getVal(['วันที่-เวลาที่ขอ', 'timestamp', 'date']);
+        const itDate = rawDate ? new Date(rawDate) : null;
+
+        if (!rid) return;
+        uniqueRequests.add(rid);
+
+        if (itStatus === 'รอจัดซื้อ' || itStatus === 'อยู่ระหว่างจัดซื้อ') stats.pending++;
+        if (itStatus === 'เสร็จสิ้น') stats.completed++;
+        if (itPrio === 'ด่วน') stats.urgent++;
+
+        stats.statuses[itStatus] = (stats.statuses[itStatus] || 0) + 1;
+        stats.depts[itDept] = (stats.depts[itDept] || 0) + 1;
+
+        if (itName) stats.items[itName] = (stats.items[itName] || 0) + 1;
+
+        if (itDate && !isNaN(itDate)) {
+            const dKey = itDate.toLocaleDateString('en-CA');
+            if (stats.timeline[dKey] !== undefined) {
+                stats.timeline[dKey]++;
+            }
+        }
+    });
+
+    stats.total = uniqueRequests.size;
+
+    const updateText = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.innerText = Number(val || 0).toLocaleString();
+    };
+
+    updateText('statTotalRequests', stats.total);
+    updateText('statPendingRequests', stats.pending);
+    updateText('statUrgentItems', stats.urgent);
+    updateText('statCompletedItems', stats.completed);
+
+    const createChart = (id, config) => {
+        const canvas = document.getElementById(id);
+        if (!canvas) return;
+        if (charts[id]) charts[id].destroy();
+        const ctx = canvas.getContext('2d');
+        charts[id] = new Chart(ctx, config);
+    };
+
+    const sortedDepts = Object.entries(stats.depts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    createChart('deptChart', {
+        type: 'bar',
+        data: {
+            labels: sortedDepts.map(d => d[0]),
+            datasets: [{
+                label: 'จำนวนรายการพัสดุ',
+                data: sortedDepts.map(d => d[1]),
+                backgroundColor: 'rgba(99, 102, 241, 0.8)',
+                hoverBackgroundColor: '#4f46e5',
+                borderRadius: 8,
+                barThickness: 40
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } },
+                x: { grid: { display: false } }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+
+    const statusColors = {
+        'รอจัดซื้อ': '#94a3b8',
+        'อยู่ระหว่างจัดซื้อ': '#facc15',
+        'ได้รับบางส่วน': '#3b82f6',
+        'เสร็จสิ้น': '#10b981',
+        'ยกเลิก': '#ef4444'
+    };
+
+    const statusLabels = Object.keys(stats.statuses);
+    createChart('statusChart', {
+        type: 'doughnut',
+        data: {
+            labels: statusLabels,
+            datasets: [{
+                data: Object.values(stats.statuses),
+                backgroundColor: statusLabels.map(s => statusColors[s] || '#cbd5e1'),
+                hoverOffset: 12,
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '70%',
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { usePointStyle: true, padding: 20, font: { family: 'Prompt', size: 12 } }
+                }
+            }
+        }
+    });
+
+    const sortedItems = Object.entries(stats.items).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    createChart('topItemsChart', {
+        type: 'bar',
+        indexAxis: 'y',
+        data: {
+            labels: sortedItems.map(i => i[0]),
+            datasets: [{
+                label: 'จำนวนครั้งที่ขอ',
+                data: sortedItems.map(i => i[1]),
+                backgroundColor: 'rgba(20, 184, 166, 0.8)',
+                hoverBackgroundColor: '#0d9488',
+                borderRadius: 6,
+                barThickness: 25
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } },
+                y: { grid: { display: false } }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+
+    createChart('trendChart', {
+        type: 'line',
+        data: {
+            labels: last7DaysLabels,
+            datasets: [{
+                label: 'จำนวนรายการคำขอ',
+                data: last7DaysDateStrs.map(dStr => stats.timeline[dStr]),
+                borderColor: '#6366f1',
+                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                fill: true,
+                tension: 0.4,
+                pointRadius: 6,
+                pointHoverRadius: 8,
+                pointBackgroundColor: '#fff',
+                pointBorderWidth: 3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } },
+                x: { grid: { display: false } }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+};
+
+window.removeItem = function (button) {
+    const row = button.closest('.item-row');
+    const container = document.getElementById('itemsContainer');
+    if (container && container.querySelectorAll('.item-row').length > 1) {
+        row.style.opacity = '0';
+        row.style.transform = 'scale(0.95)';
+        row.style.transition = 'all 0.15s ease';
+        setTimeout(() => {
+            row.remove();
+            if (typeof window.renumberItems === 'function') window.renumberItems();
+        }, 150);
+    } else {
+        alert('จำเป็นต้องมีรายการวัสดุอย่างน้อย 1 รายการ');
+    }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
-
-    const userMapping = {
-        'sra141': { code: '01', name: 'ผบส.', role: 'user' },
-        'ssa141': { code: '02', name: 'ผสน.', role: 'admin' },
-        'mca141': { code: '03', name: 'ผบร.', role: 'user' },
-        'cma141': { code: '04', name: 'ผกส.', role: 'user' },
-        'oma141': { code: '05', name: 'ผปบ.', role: 'user' },
-        'mta141': { code: '06', name: 'ผมต.', role: 'user' },
-        'dla141': { code: '07', name: 'กฟส.ดอยหล่อ', role: 'user' },
-        'mja141': { code: '08', name: 'กฟส.แม่แจ่ม', role: 'user' },
-    };
-
-    const DEPT_MAP = {
-        '01': 'ผบส.',
-        '02': 'ผสน.',
-        '03': 'ผบร.',
-        '04': 'ผกส.',
-        '05': 'ผปบ.',
-        '06': 'ผมต.',
-        '07': 'กฟส.ดอยหล่อ',
-        '08': 'กฟส.แม่แจ่ม'
-    };
-
-    const STATUS_MAP = {
-        'รอจัดซื้อ': { cls: 'status-waiting', icon: '📦' },
-        'อยู่ระหว่างจัดซื้อ': { cls: 'status-processing', icon: '⏳' },
-        'ได้รับบางส่วน': { cls: 'status-partial', icon: '🌗' },
-        'เสร็จสิ้น': { cls: 'status-done', icon: '✅' },
-        'ยกเลิก': { cls: 'status-cancelled', icon: '❌' }
-    };
 
     const loginContainer = document.getElementById('loginContainer');
     const mainAppContainer = document.getElementById('mainAppContainer');
@@ -70,21 +330,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const adminItemsContainer = document.getElementById('adminItemsContainer');
     const saveStatusBtn = document.getElementById('saveStatusBtn');
 
-    let currentDeptCode = '';
-    let isAdminMode = false;
-    let adminPriorityFilter = 'ทั้งหมด';
-    let adminSortState = { key: 'date', direction: 'asc' };
-    let editingRequestId = null;
-    let currentRequestsData = {};
-    let pendingPayload = null;
-    let charts = {};
-    let sortState = { key: 'date', direction: 'desc' };
-
-    function getAppScriptUrl() {
-        if (typeof window.APPS_SCRIPT_URL !== 'undefined' && window.APPS_SCRIPT_URL) return window.APPS_SCRIPT_URL;
-        if (typeof APPS_SCRIPT_URL !== 'undefined' && APPS_SCRIPT_URL) return APPS_SCRIPT_URL;
-        return '';
-    }
 
     function showStatus(text, type = '') {
         if (!statusMessage) return;
@@ -152,26 +397,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    async function fetchTrackingData() {
-        const appScriptUrl = getAppScriptUrl();
-        if (!appScriptUrl) return [];
-
-        const user = sessionStorage.getItem('loggedInUser');
-        if (!user || !userMapping[user]) return [];
-
-        const deptCode = userMapping[user].code;
-        const role = isAdminMode ? 'admin' : 'user';
-
-        try {
-            const url = `${appScriptUrl}?action=tracking&deptCode=${encodeURIComponent(deptCode)}&role=${encodeURIComponent(role)}&t=${Date.now()}`;
-            const res = await fetch(url);
-            const result = await res.json();
-            return result.status === 'success' ? result.data : [];
-        } catch (err) {
-            console.error('Fetch Error:', err);
-            return [];
-        }
-    }
 
     function updateHomeView() {
         const purchaseForm = document.getElementById('purchaseRequestForm');
@@ -632,303 +857,343 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    async function renderTrackingTable(targetContainerId = 'trackingContainer') {
-        const container = document.getElementById(targetContainerId);
-        if (!container) return;
+window.renderTrackingTable = async function(targetContainerId = 'trackingContainer') {
+    const container = document.getElementById(targetContainerId);
+    if (!container) return;
 
-        container.innerHTML = '<div class="card" style="text-align:center; padding:3rem;"><div class="spinner" style="width:40px; height:40px; border-width:4px; margin:0 auto 1rem; color:var(--primary-main);"></div><div style="color:var(--text-muted); font-size:1.1rem;">กำลังโหลดข้อมูล...</div></div>';
+    container.innerHTML = '<div class="card" style="text-align:center; padding:3rem;"><div class="spinner" style="width:40px; height:40px; border-width:4px; margin:0 auto 1rem; color:var(--primary-main);"></div><div style="color:var(--text-muted); font-size:1.1rem;">กำลังโหลดข้อมูล...</div></div>';
 
-        const rawData = await fetchTrackingData();
-        if (!rawData || rawData.length === 0) {
-            container.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 2rem;">ยังไม่มีรายการคำขอ</p>';
-            return;
-        }
-
-        const groupsMap = {};
-        rawData.forEach(row => {
-            const rid = row['รหัสคำขอ'];
-            if (!groupsMap[rid]) {
-                groupsMap[rid] = {
-                    id: rid,
-                    date: row['วันที่-เวลาที่ขอ'],
-                    requester: row['ชื่อผู้ขอ'],
-                    deptName: row['ชื่อแผนก'],
-                    deptCode: row['รหัสแผนก'],
-                    itemsCount: 0,
-                    items: []
-                };
-            }
-
-            groupsMap[rid].itemsCount++;
-            groupsMap[rid].items.push({
-                index: row['ลำดับรายการ'],
-                name: row['รายละเอียดวัสดุ'],
-                qty: row['จำนวน'],
-                unit: row['หน่วยนับ'],
-                asset: row['รหัสทรัพย์สิน'],
-                rem: row['หมายเหตุ'],
-                url: row['ไฟล์แนบ URL'],
-                status: row['สถานะ'],
-                note: row['หมายเหตุ Admin'] || '',
-                priority: String(row['Priority'] || row['priority'] || row['Piority'] || 'ปกติ').trim(),
-                updateTime: row['วันที่อัปเดตสถานะ']
-            });
-        });
-
-        Object.values(groupsMap).forEach(group => {
-            const allItems = group.items;
-            const statusCounts = {
-                'รอจัดซื้อ': 0,
-                'อยู่ระหว่างจัดซื้อ': 0,
-                'ได้รับบางส่วน': 0,
-                'เสร็จสิ้น': 0,
-                'ยกเลิก': 0
-            };
-
-            allItems.forEach(it => {
-                if (statusCounts[it.status] !== undefined) statusCounts[it.status]++;
-            });
-
-            const total = allItems.length;
-            const doneTotal = statusCounts['เสร็จสิ้น'] + statusCounts['ยกเลิก'];
-
-            if (total === 1) {
-                group.status = allItems[0].status;
-            } else if (statusCounts['รอจัดซื้อ'] === total) {
-                group.status = 'รอจัดซื้อ';
-            } else if (doneTotal === total && statusCounts['เสร็จสิ้น'] === total) {
-                group.status = 'เสร็จสิ้น';
-            } else if (doneTotal === total && statusCounts['ยกเลิก'] === total) {
-                group.status = 'ยกเลิก';
-            } else if (statusCounts['ได้รับบางส่วน'] > 0 || (statusCounts['เสร็จสิ้น'] > 0 && doneTotal < total)) {
-                group.status = 'ได้รับบางส่วน';
-            } else {
-                group.status = 'อยู่ระหว่างจัดซื้อ';
-            }
-
-            let latestUpdate = null;
-            allItems.forEach(it => {
-                if (it.updateTime) {
-                    const d = new Date(it.updateTime);
-                    if (!isNaN(d)) {
-                        if (!latestUpdate || d > latestUpdate) latestUpdate = d;
-                    }
-                }
-            });
-            group.latestUpdate = latestUpdate;
-        });
-
-        currentRequestsData = groupsMap;
-
-        let groups = Object.values(groupsMap);
-        if (targetContainerId === 'adminWorklistTableContainer') {
-            groups = groups.filter(g => g.status !== 'เสร็จสิ้น' && g.status !== 'ยกเลิก');
-        }
-
-        groups.sort((a, b) => {
-            let vA = a[sortState.key];
-            let vB = b[sortState.key];
-
-            if (sortState.key === 'date') {
-                vA = new Date(a.date).getTime();
-                vB = new Date(b.date).getTime();
-            }
-
-            if (vA < vB) return sortState.direction === 'asc' ? -1 : 1;
-            if (vA > vB) return sortState.direction === 'asc' ? 1 : -1;
-            return 0;
-        });
-
-        const statusKeys = ['รอจัดซื้อ', 'อยู่ระหว่างจัดซื้อ', 'ได้รับบางส่วน', 'เสร็จสิ้น', 'ยกเลิก'];
-        let html = '';
-
-        statusKeys.forEach(stKey => {
-            const reqs = groups.filter(g => g.status === stKey);
-            if (reqs.length === 0) return;
-
-            const stMeta = STATUS_MAP[stKey] || { cls: '', icon: '' };
-
-            html += `
-                <div class="card" style="margin-bottom: 2rem;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); margin-bottom:1rem; padding-bottom:0.5rem;">
-                        <h3 style="color: var(--text-main); margin: 0;">${stMeta.icon} ${stKey} <span style="font-size:0.9rem; color:var(--text-muted); font-weight:normal; margin-left:0.5rem;">${reqs.length}</span></h3>
-                    </div>
-                    <div class="table-wrapper">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th style="cursor:pointer; width:18%;" onclick="setSort('id')">รหัสคำขอ <span class="sort-icon sort-id"></span></th>
-                                    <th style="cursor:pointer; width:15%;" onclick="setSort('date')">วันที่ขอ <span class="sort-icon sort-date"></span></th>
-                                    <th style="cursor:pointer; width:12%;" onclick="setSort('deptName')">แผนก <span class="sort-icon sort-deptName"></span></th>
-                                    <th style="cursor:pointer; width:15%;" onclick="setSort('requester')">ผู้ขอ <span class="sort-icon sort-requester"></span></th>
-                                    <th style="cursor:pointer; width:12%; text-align:center;" onclick="setSort('itemsCount')">จำนวน <span class="sort-icon sort-itemsCount"></span></th>
-                                    <th style="cursor:pointer; width:13%;" onclick="setSort('status')">สถานะ <span class="sort-icon sort-status"></span></th>
-                                    <th style="text-align:center; width:15%;">จัดการ</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-            `;
-
-            reqs.forEach(req => {
-                const showManageBtn = isAdminMode;
-                const canEdit = req.status === 'รอจัดซื้อ';
-                let dateStr = req.date || '-';
-                let timeStr = '';
-
-                try {
-                    const d = new Date(req.date);
-                    if (!isNaN(d)) {
-                        dateStr = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
-                        timeStr = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-                    }
-                } catch (_) { }
-
-                html += `
-                    <tr class="tracking-tr" id="req-row-${req.id}" onclick="toggleRequestDetails('${req.id}')">
-                        <td style="font-weight:500;"><span class="expand-icon" style="display:inline-block; margin-right:5px;">▶</span>${req.id}</td>
-                        <td><div>${dateStr}</div><div class="text-time">${timeStr}</div></td>
-                        <td>${req.deptName || '-'}</td>
-                        <td>${req.requester || '-'}</td>
-                        <td style="text-align:center;">
-                            <div style="font-weight:700; color:var(--primary-main);">${req.items.length}</div>
-                            <div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.2rem; font-weight:400; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:140px; margin-left:auto; margin-right:auto;">
-                                ${req.items.map(i => i.name).slice(0, 2).join(', ')}${req.items.length > 2 ? '...' : ''}
-                            </div>
-                        </td>
-                        <td><span class="status-badge ${stMeta.cls}">${req.status}</span></td>
-                        <td>
-                            <div style="display:flex; gap:5px; justify-content:center;">
-                                ${showManageBtn ? `<button class="btn btn-primary" style="font-size:0.75rem; padding:0.25rem 0.5rem;" onclick="event.stopPropagation(); openAdminModal('${req.id}')">จัดการ</button>` : ''}
-                                ${canEdit ? `<button class="btn btn-outline" style="font-size:0.75rem; padding:0.25rem 0.5rem;" onclick="event.stopPropagation(); editRequest('${req.id}')">แก้ไข</button>` : ''}
-                                ${canEdit ? `<button class="btn btn-danger" style="font-size:0.75rem; padding:0.25rem 0.5rem; border-color:#ef4444;" onclick="event.stopPropagation(); cancelRequest('${req.id}')">ยกเลิก</button>` : ''}
-                            </div>
-                        </td>
-                    </tr>
-                    <tr id="detail-${req.id}" class="detail-row hide" style="display: none;">
-                        <td colspan="7" style="padding:0; border:none;">
-                            <div class="detail-container">
-                                <div class="detail-header" style="margin-bottom:1rem;">
-                                    <strong>รายละเอียดวัสดุ</strong>
-                                    <span class="text-time" style="font-style:italic;">
-                                        ${req.latestUpdate ? new Date(req.latestUpdate).toLocaleString('th-TH') : ''}
-                                    </span>
-                                </div>
-                                <table class="detail-table" style="width:100%;">
-                                    <thead>
-                                        <tr>
-                                            <th style="width:35%;">รายการ</th>
-                                            <th style="text-align:center;">จำนวน</th>
-                                            <th style="text-align:center;">Priority</th>
-                                            <th>Asset</th>
-                                            <th>หมายเหตุ Admin</th>
-                                            <th style="text-align:right;">ไฟล์</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${req.items.map(it => {
-                    const stMetaItem = STATUS_MAP[it.status] || { cls: 'status-waiting' };
-                    let itemTime = '';
-                    if (it.updateTime) {
-                        const idate = new Date(it.updateTime);
-                        if (!isNaN(idate.getTime())) {
-                            itemTime = idate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
-                        }
-                    }
-
-                    return `
-                                                <tr>
-                                                    <td style="font-weight:500; color:var(--text-main);">
-                                                        ${it.name || '-'}
-                                                        <div style="margin-top:0.25rem; display:flex; align-items:center; gap:8px;">
-                                                            <span class="status-badge ${stMetaItem.cls}" style="font-size:0.7rem; padding:0.15rem 0.5rem;">${it.status || '-'}</span>
-                                                            ${itemTime ? `<span class="text-time" style="font-size:0.75rem;">${itemTime}</span>` : ''}
-                                                        </div>
-                                                    </td>
-                                                    <td style="text-align:center;">${it.qty || '-'} ${it.unit || ''}</td>
-                                                    <td style="text-align:center;">
-                                                        <span class="prio-badge ${it.priority === 'ด่วน' ? 'prio-urgent' : 'prio-normal'}" style="font-size:0.75rem;">
-                                                            ${it.priority === 'ด่วน' ? 'ด่วน' : 'ปกติ'}
-                                                        </span>
-                                                    </td>
-                                                    <td style="font-family:monospace; font-size:0.85rem;">${it.asset || '-'}</td>
-                                                    <td style="color:var(--text-muted); font-size:0.85rem;">${it.note || '-'}</td>
-                                                    <td style="text-align:right;">
-                                                        ${it.url ? `<button onclick="event.stopPropagation(); openImageModal('${it.url}')" class="btn-file-view" style="border:none; background:none; cursor:pointer; font-size:0.85rem;">📂</button>` : '-'}
-                                                    </td>
-                                                </tr>
-                                            `;
-                }).join('')}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-            });
-
-            html += `</tbody></table></div></div>`;
-        });
-
-        container.innerHTML = html;
-        updateSortIcons();
+    const rawData = await fetchTrackingData();
+    if (!rawData || rawData.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 2rem;">ยังไม่มีรายการคำขอ</p>';
+        return;
     }
 
-    window.toggleRequestDetails = function (id) {
-        const row = document.getElementById(`req-row-${id}`);
-        const detail = document.getElementById(`detail-${id}`);
-        if (!row || !detail) return;
-
-        const isHidden = detail.style.display === 'none' || detail.classList.contains('hide');
-        if (isHidden) {
-            detail.style.display = 'table-row';
-            detail.classList.remove('hide');
-            row.classList.add('expanded');
-        } else {
-            detail.style.display = 'none';
-            detail.classList.add('hide');
-            row.classList.remove('expanded');
+    const groupsMap = {};
+    rawData.forEach(row => {
+        const rid = row['รหัสคำขอ'];
+        if (!groupsMap[rid]) {
+            groupsMap[rid] = {
+                id: rid,
+                date: row['วันที่-เวลาที่ขอ'],
+                requester: row['ชื่อผู้ขอ'],
+                deptName: row['ชื่อแผนก'],
+                deptCode: row['รหัสแผนก'],
+                itemsCount: 0,
+                items: []
+            };
         }
-    };
 
-    window.openImageModal = function (url) {
-        imageModal.classList.remove('hide');
-        imageModal.style.display = 'flex';
-        imagePreview.style.display = 'none';
-        pdfPreview.style.display = 'none';
+        groupsMap[rid].itemsCount++;
+        groupsMap[rid].items.push({
+            index: row['ลำดับรายการ'],
+            name: row['รายละเอียดวัสดุ'],
+            qty: row['จำนวน'],
+            unit: row['หน่วยนับ'],
+            asset: row['รหัสทรัพย์สิน'],
+            rem: row['หมายเหตุ'],
+            url: row['ไฟล์แนบ URL'],
+            status: row['สถานะ'],
+            note: row['หมายเหตุ Admin'] || '',
+            priority: String(row['Priority'] || row['priority'] || row['Piority'] || 'ปกติ').trim(),
+            updateTime: row['วันที่อัปเดตสถานะ']
+        });
+    });
+
+    Object.values(groupsMap).forEach(group => {
+        const allItems = group.items;
+        const statusCounts = {
+            'รอจัดซื้อ': 0,
+            'อยู่ระหว่างจัดซื้อ': 0,
+            'ได้รับบางส่วน': 0,
+            'เสร็จสิ้น': 0,
+            'ยกเลิก': 0
+        };
+
+        allItems.forEach(it => {
+            if (statusCounts[it.status] !== undefined) statusCounts[it.status]++;
+        });
+
+        const total = allItems.length;
+        const doneTotal = statusCounts['เสร็จสิ้น'] + statusCounts['ยกเลิก'];
+
+        if (total === 1) {
+            group.status = allItems[0].status;
+        } else if (statusCounts['รอจัดซื้อ'] === total) {
+            group.status = 'รอจัดซื้อ';
+        } else if (doneTotal === total && statusCounts['เสร็จสิ้น'] === total) {
+            group.status = 'เสร็จสิ้น';
+        } else if (doneTotal === total && statusCounts['ยกเลิก'] === total) {
+            group.status = 'ยกเลิก';
+        } else if (statusCounts['ได้รับบางส่วน'] > 0 || (statusCounts['เสร็จสิ้น'] > 0 && doneTotal < total)) {
+            group.status = 'ได้รับบางส่วน';
+        } else {
+            group.status = 'อยู่ระหว่างจัดซื้อ';
+        }
+
+        let latestUpdate = null;
+        allItems.forEach(it => {
+            if (it.updateTime) {
+                const d = new Date(it.updateTime);
+                if (!isNaN(d)) {
+                    if (!latestUpdate || d > latestUpdate) latestUpdate = d;
+                }
+            }
+        });
+        group.latestUpdate = latestUpdate;
+    });
+
+    currentRequestsData = groupsMap;
+
+    let groups = Object.values(groupsMap);
+    if (targetContainerId === 'adminWorklistTableContainer') {
+        groups = groups.filter(g => g.status !== 'เสร็จสิ้น' && g.status !== 'ยกเลิก');
+    }
+
+    groups.sort((a, b) => {
+        let vA = a[sortState.key];
+        let vB = b[sortState.key];
+
+        if (sortState.key === 'date') {
+            vA = new Date(a.date).getTime();
+            vB = new Date(b.date).getTime();
+        }
+
+        if (vA < vB) return sortState.direction === 'asc' ? -1 : 1;
+        if (vA > vB) return sortState.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    const statusKeys = ['รอจัดซื้อ', 'อยู่ระหว่างจัดซื้อ', 'ได้รับบางส่วน', 'เสร็จสิ้น', 'ยกเลิก'];
+    let html = '';
+
+    statusKeys.forEach(stKey => {
+        const reqs = groups.filter(g => g.status === stKey);
+        if (reqs.length === 0) return;
+
+        const stMeta = STATUS_MAP[stKey] || { cls: '', icon: '' };
+
+        html += `
+            <div class="card" style="margin-bottom: 2rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); margin-bottom:1rem; padding-bottom:0.5rem;">
+                    <h3 style="color: var(--text-main); margin: 0;">${stMeta.icon} ${stKey} <span style="font-size:0.9rem; color:var(--text-muted); font-weight:normal; margin-left:0.5rem;">${reqs.length}</span></h3>
+                </div>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="cursor:pointer; width:18%;" onclick="setSort('id')">รหัสคำขอ <span class="sort-icon sort-id"></span></th>
+                                <th style="cursor:pointer; width:15%;" onclick="setSort('date')">วันที่ขอ <span class="sort-icon sort-date"></span></th>
+                                <th style="cursor:pointer; width:12%;" onclick="setSort('deptName')">แผนก <span class="sort-icon sort-deptName"></span></th>
+                                <th style="cursor:pointer; width:15%;" onclick="setSort('requester')">ผู้ขอ <span class="sort-icon sort-requester"></span></th>
+                                <th style="cursor:pointer; width:12%; text-align:center;" onclick="setSort('itemsCount')">จำนวน <span class="sort-icon sort-itemsCount"></span></th>
+                                <th style="cursor:pointer; width:13%;" onclick="setSort('status')">สถานะ <span class="sort-icon sort-status"></span></th>
+                                <th style="text-align:center; width:15%;">จัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+
+        reqs.forEach(req => {
+            const showManageBtn = isAdminMode;
+            const canEdit = req.status === 'รอจัดซื้อ';
+            let dateStr = req.date || '-';
+            let timeStr = '';
+
+            try {
+                const d = new Date(req.date);
+                if (!isNaN(d)) {
+                    dateStr = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+                    timeStr = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+                }
+            } catch (_) { }
+
+            html += `
+                <tr class="tracking-tr" id="req-row-${req.id}" onclick="toggleRequestDetails('${req.id}')">
+                    <td style="font-weight:500;"><span class="expand-icon" style="display:inline-block; margin-right:5px;">▶</span>${req.id}</td>
+                    <td><div>${dateStr}</div><div class="text-time">${timeStr}</div></td>
+                    <td>${req.deptName || '-'}</td>
+                    <td>${req.requester || '-'}</td>
+                    <td style="text-align:center;">
+                        <div style="font-weight:700; color:var(--primary-main);">${req.items.length}</div>
+                        <div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.2rem; font-weight:400; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:140px; margin-left:auto; margin-right:auto;">
+                            ${req.items.map(i => i.name).slice(0, 2).join(', ')}${req.items.length > 2 ? '...' : ''}
+                        </div>
+                    </td>
+                    <td><span class="status-badge ${stMeta.cls}">${req.status}</span></td>
+                    <td>
+                        <div style="display:flex; gap:5px; justify-content:center;">
+                            ${showManageBtn ? `<button class="btn btn-primary" style="font-size:0.75rem; padding:0.25rem 0.5rem;" onclick="event.stopPropagation(); openAdminModal('${req.id}')">จัดการ</button>` : ''}
+                            ${canEdit ? `<button class="btn btn-outline" style="font-size:0.75rem; padding:0.25rem 0.5rem;" onclick="event.stopPropagation(); editRequest('${req.id}')">แก้ไข</button>` : ''}
+                            ${canEdit ? `<button class="btn btn-danger" style="font-size:0.75rem; padding:0.25rem 0.5rem; border-color:#ef4444;" onclick="event.stopPropagation(); cancelRequest('${req.id}')">ยกเลิก</button>` : ''}
+                        </div>
+                    </td>
+                </tr>
+                <tr id="detail-${req.id}" class="detail-row hide" style="display: none;">
+                    <td colspan="7" style="padding:0; border:none;">
+                        <div class="detail-container">
+                            <div class="detail-header" style="margin-bottom:1rem;">
+                                <strong>รายละเอียดวัสดุ</strong>
+                                <span class="text-time" style="font-style:italic;">
+                                    ${req.latestUpdate ? new Date(req.latestUpdate).toLocaleString('th-TH') : ''}
+                                </span>
+                            </div>
+                            <table class="detail-table" style="width:100%;">
+                                <thead>
+                                    <tr>
+                                        <th style="width:35%;">รายการ</th>
+                                        <th style="text-align:center;">จำนวน</th>
+                                        <th style="text-align:center;">Priority</th>
+                                        <th>Asset</th>
+                                        <th>หมายเหตุ Admin</th>
+                                        <th style="text-align:right;">ไฟล์</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${req.items.map(it => {
+                                        const stMetaItem = STATUS_MAP[it.status] || { cls: 'status-waiting' };
+                                        let itemTime = '';
+                                        if (it.updateTime) {
+                                            const idate = new Date(it.updateTime);
+                                            if (!isNaN(idate.getTime())) {
+                                                itemTime = idate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
+                                            }
+                                        }
+
+                                        return `
+                                            <tr>
+                                                <td style="font-weight:500; color:var(--text-main);">
+                                                    ${it.name || '-'}
+                                                    <div style="margin-top:0.25rem; display:flex; align-items:center; gap:8px;">
+                                                        <span class="status-badge ${stMetaItem.cls}" style="font-size:0.7rem; padding:0.15rem 0.5rem;">${it.status || '-'}</span>
+                                                        ${itemTime ? `<span class="text-time" style="font-size:0.75rem;">${itemTime}</span>` : ''}
+                                                    </div>
+                                                </td>
+                                                <td style="text-align:center;">${it.qty || '-'} ${it.unit || ''}</td>
+                                                <td style="text-align:center;">
+                                                    <span class="prio-badge ${it.priority === 'ด่วน' ? 'prio-urgent' : 'prio-normal'}" style="font-size:0.75rem;">
+                                                        ${it.priority === 'ด่วน' ? 'ด่วน' : 'ปกติ'}
+                                                    </span>
+                                                </td>
+                                                <td style="font-family:monospace; font-size:0.85rem;">${it.asset || '-'}</td>
+                                                <td style="color:var(--text-muted); font-size:0.85rem;">${it.note || '-'}</td>
+                                                <td style="text-align:right;">
+                                                    ${it.url ? `<button onclick="event.stopPropagation(); openImageModal('${it.url}')" class="btn-file-view" style="border:none; background:none; cursor:pointer; font-size:0.85rem;">📂</button>` : '-'}
+                                                </td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+
+        html += `</tbody></table></div></div>`;
+    });
+
+    container.innerHTML = html;
+    if (typeof window.updateSortIcons === 'function') window.updateSortIcons();
+};
+
+window.toggleRequestDetails = function (id) {
+    const row = document.getElementById(`req-row-${id}`);
+    const detail = document.getElementById(`detail-${id}`);
+    if (!row || !detail) return;
+
+    const isHidden = detail.style.display === 'none' || detail.classList.contains('hide');
+    if (isHidden) {
+        detail.style.display = 'table-row';
+        detail.classList.remove('hide');
+        row.classList.add('expanded');
+    } else {
+        detail.style.display = 'none';
+        detail.classList.add('hide');
+        row.classList.remove('expanded');
+    }
+};
+
+window.openImageModal = function (url) {
+    const imageModal = document.getElementById('imageModal');
+    const imagePreview = document.getElementById('imagePreview');
+    const pdfPreview = document.getElementById('pdfPreview');
+    const previewLoader = document.getElementById('previewLoader');
+    const downloadBtn = document.getElementById('downloadBtn');
+    
+    if (!imageModal) return;
+
+    imageModal.classList.remove('hide');
+    imageModal.style.display = 'flex';
+    if (imagePreview) imagePreview.style.display = 'none';
+    if (pdfPreview) pdfPreview.style.display = 'none';
+    if (previewLoader) {
         previewLoader.style.display = 'block';
         previewLoader.innerText = 'กำลังโหลด...';
-        downloadBtn.href = url;
+    }
+    if (downloadBtn) downloadBtn.href = url;
 
-        let previewUrl = url;
-        if (url.includes('drive.google.com')) {
-            const match = url.match(/[-\w]{25,}/);
-            if (match) {
-                previewUrl = `https://drive.google.com/file/d/${match[0]}/preview`;
-            }
+    let previewUrl = url;
+    if (url.includes('drive.google.com')) {
+        const match = url.match(/[-\w]{25,}/);
+        if (match) {
+            previewUrl = `https://drive.google.com/file/d/${match[0]}/preview`;
         }
+    }
 
-        if (previewUrl.includes('drive.google.com') || url.toLowerCase().includes('.pdf')) {
+    if (previewUrl.includes('drive.google.com') || url.toLowerCase().includes('.pdf')) {
+        if (pdfPreview) {
             pdfPreview.src = previewUrl;
             pdfPreview.style.display = 'block';
-            previewLoader.style.display = 'none';
-        } else {
+        }
+        if (previewLoader) previewLoader.style.display = 'none';
+    } else {
+        if (imagePreview) {
             imagePreview.src = url;
             imagePreview.onload = () => {
                 imagePreview.style.display = 'block';
-                previewLoader.style.display = 'none';
+                if (previewLoader) previewLoader.style.display = 'none';
             };
             imagePreview.onerror = () => {
-                previewLoader.innerText = 'ไม่สามารถแสดงตัวอย่างไฟล์ได้';
+                if (previewLoader) previewLoader.innerText = 'ไม่สามารถแสดงตัวอย่างไฟล์ได้';
             };
         }
-    };
+    }
+};
 
-    window.closeImageModal = function () {
-        imageModal.classList.add('hide');
-        imageModal.style.display = 'none';
-        imagePreview.src = '';
-        pdfPreview.src = '';
-    };
+window.closeImageModal = function () {
+    const imageModal = document.getElementById('imageModal');
+    if (!imageModal) return;
+    imageModal.classList.add('hide');
+    imageModal.style.display = 'none';
+};
+
+window.setSort = function (key) {
+    if (sortState.key === key) {
+        sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        sortState.key = key;
+        sortState.direction = 'asc';
+    }
+    renderTrackingTable();
+};
+
+window.updateSortIcons = function() {
+    const keys = ['id', 'date', 'deptName', 'requester', 'itemsCount', 'status'];
+    keys.forEach(k => {
+        const els = document.querySelectorAll(`.sort-${k}`);
+        els.forEach(el => {
+            if (sortState.key === k) {
+                el.innerText = sortState.direction === 'asc' ? ' ▲' : ' ▼';
+                el.style.color = 'var(--primary-main)';
+            } else {
+                el.innerText = ' ↕';
+                el.style.color = '#ccc';
+            }
+        });
+    });
+}
 
     window.editRequest = function (id) {
         const req = currentRequestsData[id];
@@ -1293,246 +1558,41 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // ===== Analysis Dashboard Logic =====
-        let charts = {}; // Store chart instances
-
-        window.renderAnalysis = async function () {
-            console.log('Starting Analysis Rendering...');
-
-            const stats = {
-                total: 0,
-                pending: 0,
-                urgent: 0,
-                completed: 0,
-                depts: {},
-                statuses: {},
-                items: {},
-                timeline: {}
-            };
-
-            const rawData = await fetchTrackingData();
-            console.log('Raw Data for Analysis:', rawData ? rawData.length : 0, 'rows');
-
-            if (!rawData || rawData.length === 0) {
-                console.warn('No data returned for analysis.');
-                return;
-            }
-
-            const uniqueRequests = new Set();
-            const today = new Date();
-            const last7DaysLabels = [];
-            const last7DaysDateStrs = [];
-
-            for (let i = 6; i >= 0; i--) {
-                const d = new Date();
-                d.setDate(today.getDate() - i);
-                const dateStrLabel = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
-                const dateStrKey = d.toLocaleDateString('en-CA');
-                last7DaysLabels.push(dateStrLabel);
-                last7DaysDateStrs.push(dateStrKey);
-                stats.timeline[dateStrKey] = 0;
-            }
-
-            rawData.forEach(row => {
-                const getVal = (possibleKeys) => {
-                    for (const k of possibleKeys) {
-                        if (row[k] !== undefined) return row[k];
-                        const foundKey = Object.keys(row).find(rk => rk.trim() === k.trim());
-                        if (foundKey) return row[foundKey];
-                    }
-                    return '';
-                };
-
-                const rid = getVal(['รหัสคำขอ', 'requestId', 'ID']);
-                const itName = getVal(['รายละเอียดวัสดุ', 'itemName', 'Material']);
-                const itStatus = String(getVal(['สถานะ', 'status'])).trim();
-                const itPrio = String(getVal(['Priority', 'priority', 'ความเร่งด่วน'])).trim();
-                const itDept = getVal(['ชื่อแผนก', 'deptName', 'Department']) || 'ไม่ระบุ';
-                const rawDate = getVal(['วันที่-เวลาที่ขอ', 'timestamp', 'date']);
-                const itDate = rawDate ? new Date(rawDate) : null;
-
-                if (!rid) return;
-
-                uniqueRequests.add(rid);
-
-                if (itStatus === 'รอจัดซื้อ' || itStatus === 'อยู่ระหว่างจัดซื้อ') stats.pending++;
-                if (itStatus === 'เสร็จสิ้น') stats.completed++;
-                if (itPrio === 'ด่วน') stats.urgent++;
-
-                stats.statuses[itStatus] = (stats.statuses[itStatus] || 0) + 1;
-                stats.depts[itDept] = (stats.depts[itDept] || 0) + 1;
-
-                if (itName) stats.items[itName] = (stats.items[itName] || 0) + 1;
-
-                if (itDate && !isNaN(itDate)) {
-                    const dKey = itDate.toLocaleDateString('en-CA');
-                    if (stats.timeline[dKey] !== undefined) {
-                        stats.timeline[dKey]++;
-                    }
-                }
-            });
-
-            stats.total = uniqueRequests.size;
-
-            const updateText = (id, val) => {
-                const el = document.getElementById(id);
-                if (el) el.innerText = Number(val || 0).toLocaleString();
-            };
-
-            updateText('statTotalRequests', stats.total);
-            updateText('statPendingRequests', stats.pending);
-            updateText('statUrgentItems', stats.urgent);
-            updateText('statCompletedItems', stats.completed);
-
-            const createChart = (id, config) => {
-                const canvas = document.getElementById(id);
-                if (!canvas) return;
-                if (charts[id]) charts[id].destroy();
-                const ctx = canvas.getContext('2d');
-                charts[id] = new Chart(ctx, config);
-            };
-
-            const sortedDepts = Object.entries(stats.depts).sort((a, b) => b[1] - a[1]).slice(0, 5);
-            createChart('deptChart', {
-                type: 'bar',
-                data: {
-                    labels: sortedDepts.map(d => d[0]),
-                    datasets: [{
-                        label: 'จำนวนรายการพัสดุ',
-                        data: sortedDepts.map(d => d[1]),
-                        backgroundColor: 'rgba(99, 102, 241, 0.8)',
-                        hoverBackgroundColor: '#4f46e5',
-                        borderRadius: 8,
-                        barThickness: 40
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } },
-                        x: { grid: { display: false } }
-                    },
-                    plugins: { legend: { display: false } }
-                }
-            });
-
-            const statusColors = {
-                'รอจัดซื้อ': '#94a3b8',
-                'อยู่ระหว่างจัดซื้อ': '#facc15',
-                'ได้รับบางส่วน': '#3b82f6',
-                'เสร็จสิ้น': '#10b981',
-                'ยกเลิก': '#ef4444'
-            };
-
-            const statusLabels = Object.keys(stats.statuses);
-            createChart('statusChart', {
-                type: 'doughnut',
-                data: {
-                    labels: statusLabels,
-                    datasets: [{
-                        data: Object.values(stats.statuses),
-                        backgroundColor: statusLabels.map(s => statusColors[s] || '#cbd5e1'),
-                        hoverOffset: 12,
-                        borderWidth: 0
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    cutout: '70%',
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: { usePointStyle: true, padding: 20, font: { family: 'Prompt', size: 12 } }
-                        }
-                    }
-                }
-            });
-
-            const sortedItems = Object.entries(stats.items).sort((a, b) => b[1] - a[1]).slice(0, 5);
-            createChart('topItemsChart', {
-                type: 'bar',
-                indexAxis: 'y',
-                data: {
-                    labels: sortedItems.map(i => i[0]),
-                    datasets: [{
-                        label: 'จำนวนครั้งที่ขอ',
-                        data: sortedItems.map(i => i[1]),
-                        backgroundColor: 'rgba(20, 184, 166, 0.8)',
-                        hoverBackgroundColor: '#0d9488',
-                        borderRadius: 6,
-                        barThickness: 25
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } },
-                        y: { grid: { display: false } }
-                    },
-                    plugins: { legend: { display: false } }
-                }
-            });
-
-            createChart('trendChart', {
-                type: 'line',
-                data: {
-                    labels: last7DaysLabels,
-                    datasets: [{
-                        label: 'จำนวนรายการคำขอ',
-                        data: last7DaysDateStrs.map(dStr => stats.timeline[dStr]),
-                        borderColor: '#6366f1',
-                        backgroundColor: 'rgba(99, 102, 241, 0.1)',
-                        fill: true,
-                        tension: 0.4,
-                        pointRadius: 6,
-                        pointHoverRadius: 8,
-                        pointBackgroundColor: '#fff',
-                        pointBorderWidth: 3
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } },
-                        x: { grid: { display: false } }
-                    },
-                    plugins: { legend: { display: false } }
-                }
-            });
-        };
+        const saveBatchBtn = document.getElementById('saveBatchStatusBtn');
+        const originalBatchBtnHtml = saveBatchBtn ? saveBatchBtn.innerHTML : '';
+        if (saveBatchBtn) {
+            saveBatchBtn.disabled = true;
+            saveBatchBtn.innerHTML = '⌛ กำลังบันทึกทั้งหมด...';
+        }
 
         try {
             for (const [reqId, items] of Object.entries(groups)) {
-                const res = await fetch(appScriptUrl, {
+                await fetch(appScriptUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify({
                         action: 'updateStatus',
                         requestId: reqId,
                         updatedBy: user,
-                        items
+                        items: items
                     })
                 });
-
-                const result = await res.json();
-                if (result.status !== 'success') {
-                    throw new Error(result.message || `อัปเดต ${reqId} ไม่สำเร็จ`);
-                }
             }
-
-            showStatus('✅ บันทึกสถานะหลายรายการสำเร็จ', 'success');
+            alert('✅ บันทึกสถานะทั้งหมดเรียบร้อยแล้ว');
             closeBatchAdminModal();
             updateHomeView();
             renderTrackingTable();
         } catch (e) {
             console.error(e);
-            showStatus(e.message, 'error');
+            alert('❌ เกิดข้อผิดพลาดในการบันทึกแบบกลุ่ม: ' + e.message);
+        } finally {
+            if (saveBatchBtn) {
+                saveBatchBtn.disabled = false;
+                saveBatchBtn.innerHTML = originalBatchBtnHtml;
+            }
         }
     });
+
 
     window.openProcurementPrintModal = function (items) {
         const modal = document.getElementById('procurementPrintModal');

@@ -411,7 +411,7 @@
                         <p style="color: #555; text-align: center; font-size: 0.95rem;" id="printDateString"></p>
                     </div>
                     
-                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 2rem; border: 1px solid #ddd;" border="1" cellpadding="8" cellspacing="0" bordercolor="#ddd">
+                    <table style="width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 2rem; border: 1px solid #ddd; word-break: break-word;" border="1" cellpadding="8" cellspacing="0" bordercolor="#ddd">
                         <thead>
                             <tr style="background-color: #f1f5f9;">
                                 <th style="width: 5%; text-align: center; padding: 10px;">ลำดับ</th>
@@ -555,6 +555,13 @@
             .no-print {
                 display: none !important;
             }
+        }
+
+        /* Fix table cell overflow */
+        #printableWorksheet td {
+            word-break: break-word;
+            overflow-wrap: break-word;
+            vertical-align: top;
         }
     </style>
 

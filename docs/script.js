@@ -1612,7 +1612,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div>${it['ชื่อแผนก']}</div>
                         <div style="font-size: 0.8rem; color: #555;">${it['ชื่อผู้ขอ']}</div>
                     </td>
-                    <td style="text-align: center; padding: 8px; font-size: 0.8rem; white-space: nowrap;">${it['รหัสคำขอ']}</td>
+                    <td style="text-align: center; padding: 8px; font-size: 0.7rem; white-space: nowrap; word-break: normal;">${it['รหัสคำขอ']}</td>
                     <td style="text-align: center; padding: 8px; font-size: 0.85rem;">${it['หมายเหตุ'] || '-'}</td>
                 </tr>
             `;

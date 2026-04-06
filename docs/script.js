@@ -1,25 +1,3 @@
-const userMapping = {
-    'sra141': { code: '01', name: 'ผบส.', role: 'user' },
-    'ssa141': { code: '02', name: 'ผสน.', role: 'admin' },
-    'mca141': { code: '03', name: 'ผบร.', role: 'user' },
-    'cma141': { code: '04', name: 'ผกส.', role: 'user' },
-    'oma141': { code: '05', name: 'ผปบ.', role: 'user' },
-    'mta141': { code: '06', name: 'ผมต.', role: 'user' },
-    'dla141': { code: '07', name: 'กฟส.ดอยหล่อ', role: 'user' },
-    'mja141': { code: '08', name: 'กฟส.แม่แจ่ม', role: 'user' },
-};
-
-const DEPT_MAP = {
-    '01': 'ผบส.',
-    '02': 'ผสน.',
-    '03': 'ผบร.',
-    '04': 'ผกส.',
-    '05': 'ผปบ.',
-    '06': 'ผมต.',
-    '07': 'กฟส.ดอยหล่อ',
-    '08': 'กฟส.แม่แจ่ม'
-};
-
 const STATUS_MAP = {
     'รอจัดซื้อ': { cls: 'status-waiting', icon: '📦' },
     'อยู่ระหว่างจัดซื้อ': { cls: 'status-processing', icon: '⏳' },
@@ -37,6 +15,8 @@ let charts = {};
 let sortState = { key: 'date', direction: 'desc' };
 let adminPriorityFilter = 'ทั้งหมด';
 let adminSortState = { key: 'date', direction: 'asc' };
+let quickSelectData = [];
+let rightSidebarCollapsed = false;
 
 function getAppScriptUrl() {
     if (typeof window.APPS_SCRIPT_URL !== 'undefined' && window.APPS_SCRIPT_URL) return window.APPS_SCRIPT_URL;
@@ -44,15 +24,26 @@ function getAppScriptUrl() {
     return '';
 }
 
+function getUserData() {
+    const str = sessionStorage.getItem('userData');
+    return str ? JSON.parse(str) : null;
+}
+
+function hasAdminAccess(userData) {
+    if (!userData) return false;
+    return String(userData.Role_1 || '').toLowerCase().trim() === 'admin' ||
+           String(userData.Role_2 || '').toLowerCase().trim() === 'admin';
+}
+
 async function fetchTrackingData() {
     const appScriptUrl = getAppScriptUrl();
     if (!appScriptUrl) return [];
 
-    const user = sessionStorage.getItem('loggedInUser');
-    if (!user || !userMapping[user]) return [];
+    const userData = getUserData();
+    if (!userData) return [];
 
-    const deptCode = userMapping[user].code;
-    const role = isAdminMode ? 'admin' : 'user';
+    const deptCode = userData.Section;
+    const role = (isAdminMode && hasAdminAccess(userData)) ? 'admin' : 'user';
 
     try {
         const url = `${appScriptUrl}?action=tracking&deptCode=${encodeURIComponent(deptCode)}&role=${encodeURIComponent(role)}&t=${Date.now()}`;
@@ -62,6 +53,210 @@ async function fetchTrackingData() {
     } catch (err) {
         console.error('Fetch Error:', err);
         return [];
+    }
+}
+
+async function fetchQuickSelectData() {
+    const appScriptUrl = getAppScriptUrl();
+    if (!appScriptUrl) return [];
+
+    try {
+        const url = `${appScriptUrl}?action=quickSelect&t=${Date.now()}`;
+        const res = await fetch(url);
+        const result = await res.json();
+        return result.status === 'success' ? result.data : [];
+    } catch (err) {
+        console.error('Quick Select Fetch Error:', err);
+        return [];
+    }
+}
+
+function normalizeQuickSelectValue(value) {
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function buildQuickSelectKey(name, unit = '') {
+    return `${normalizeQuickSelectValue(name)}__${normalizeQuickSelectValue(unit)}`;
+}
+
+function getSelectedQuickSelectKeys() {
+    const selected = new Set();
+    const container = document.getElementById('itemsContainer');
+    if (!container) return selected;
+
+    container.querySelectorAll('.item-row[data-quick-select-key]').forEach(row => {
+        const key = (row.dataset.quickSelectKey || '').trim();
+        if (key) selected.add(key);
+    });
+
+    return selected;
+}
+
+function renderQuickSelectSidebar() {
+    const container = document.getElementById('quickSelectContainer');
+    if (!container) return;
+
+    if (!quickSelectData || quickSelectData.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 2rem; color: var(--text-muted); grid-column: span 4;">
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">📦</div>
+                ไม่พบวัสดุยอดนิยม
+            </div>
+        `;
+        return;
+    }
+
+    const selectedKeys = getSelectedQuickSelectKeys();
+    const availableItems = quickSelectData.filter(item => {
+        const name = item['ชื่อวัสดุ'] || item['name'] || 'ไม่ระบุชื่อ';
+        const unit = item['หน่วยนับ'] || item['unit'] || '';
+        const itemKey = buildQuickSelectKey(name, unit);
+        return !selectedKeys.has(itemKey);
+    });
+
+    if (availableItems.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 1.25rem; color: var(--text-muted); grid-column: 1 / -1;">
+                <div style="font-size: 1.5rem; margin-bottom: 0.35rem;">✅</div>
+                เพิ่มวัสดุยอดนิยมครบแล้ว
+            </div>
+        `;
+        return;
+    }
+
+    let html = '';
+    availableItems.forEach(item => {
+        const name = item['ชื่อวัสดุ'] || item['name'] || 'ไม่ระบุชื่อ';
+        const unit = item['หน่วยนับ'] || item['unit'] || '';
+        const category = item['หมวดหมู่'] || item['category'] || '';
+        const description = item['รายละเอียด'] || item['description'] || '';
+        const imageUrl = item['รูปภาพ'] || item['image'] || item['รูปตัวอย่าง'] || '';
+        const itemKey = buildQuickSelectKey(name, unit);
+
+        html += `
+            <div class="quick-select-card" onclick='addQuickSelectItem(${JSON.stringify(name)}, ${JSON.stringify(unit)}, ${JSON.stringify(description)}, ${JSON.stringify(imageUrl)}, ${JSON.stringify(itemKey)})'>
+                <div class="quick-select-card-image">
+                    ${imageUrl ? `<img src="${imageUrl}" alt="${name}" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">` : ''}
+                    <div class="no-image" style="${imageUrl ? 'display:none;' : ''}">📦</div>
+                </div>
+                <div class="quick-select-card-content">
+                    <div class="quick-select-card-title">${name}</div>
+                    <div class="quick-select-card-details">
+                        ${unit ? `<div class="quick-select-card-detail"><strong>หน่วย:</strong> ${unit}</div>` : ''}
+                        ${category ? `<div class="quick-select-card-detail"><strong>หมวด:</strong> ${category}</div>` : ''}
+                        ${description ? `<div class="quick-select-card-detail">${description}</div>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    html += '<div class="quick-select-end-spacer" aria-hidden="true"></div>';
+    container.innerHTML = html;
+}
+
+window.addQuickSelectItem = function(name, unit, description, imageUrl, quickSelectKey) {
+    // Switch to form section if not already there
+    const formBtn = document.querySelector('.sidebar-menu-btn[data-target="formSection"]');
+    if (formBtn) formBtn.click();
+
+    const itemsContainer = document.getElementById('itemsContainer');
+    const itemTemplate = document.getElementById('itemTemplate');
+    if (!itemsContainer || !itemTemplate) return;
+
+    const itemKey = quickSelectKey || buildQuickSelectKey(name, unit);
+    const selectedKeys = getSelectedQuickSelectKeys();
+    if (selectedKeys.has(itemKey)) return;
+
+    const existingRows = itemsContainer.querySelectorAll('.item-row');
+    let currentRow = null;
+
+    // Check if first item is blank (empty name field)
+    if (existingRows.length > 0) {
+        const firstNameInput = existingRows[0].querySelector('.item-name');
+        if (firstNameInput && !firstNameInput.value.trim()) {
+            // First item is blank, use it
+            currentRow = existingRows[0];
+        }
+    }
+
+    // If no blank first item found, add new item
+    if (!currentRow) {
+        window.addNewItem();
+        const rows = itemsContainer.querySelectorAll('.item-row');
+        currentRow = rows[rows.length - 1];
+    }
+
+    if (!currentRow) return;
+
+    currentRow.dataset.quickSelectKey = itemKey;
+    currentRow.dataset.quickSelectName = String(name || '').trim();
+    currentRow.dataset.quickSelectUnit = String(unit || '').trim();
+
+    // Fill in the data
+    const nameInput = currentRow.querySelector('.item-name');
+    const unitInput = currentRow.querySelector('.item-unit');
+    const remarksInput = currentRow.querySelector('.item-remarks');
+    const quantityInput = currentRow.querySelector('.item-quantity');
+
+    if (nameInput) {
+        nameInput.value = name;
+        nameInput.focus();
+    }
+    if (unitInput) unitInput.value = unit;
+    if (remarksInput && description) remarksInput.value = description;
+    if (quantityInput) quantityInput.value = 1; // Default quantity
+
+    // Handle image if provided
+    if (imageUrl) {
+        const fileNameInput = currentRow.querySelector('.item-file-name');
+        const fileMimeInput = currentRow.querySelector('.item-file-mime');
+        const fileBase64Input = currentRow.querySelector('.item-file-base64');
+        const fileUrlInput = currentRow.querySelector('.item-file-url');
+        const fileStatusLabel = currentRow.querySelector('.item-file-status');
+
+        if (fileNameInput) fileNameInput.value = `${name || 'attachment'}.jpg`;
+        if (fileMimeInput) fileMimeInput.value = 'image/jpeg';
+        
+        if (imageUrl.startsWith('data:')) {
+            if (fileBase64Input) fileBase64Input.value = imageUrl.split(',')[1];
+            if (fileUrlInput) fileUrlInput.value = '';
+            if (fileStatusLabel) fileStatusLabel.textContent = '🖼️ แนบรูปแล้ว';
+        } else {
+            if (fileBase64Input) fileBase64Input.value = '';
+            if (fileUrlInput) fileUrlInput.value = imageUrl;
+            if (fileStatusLabel) {
+                fileStatusLabel.textContent = '🖼️ มีรูปตัวอย่าง';
+                fileStatusLabel.style.color = 'var(--accent-color)';
+            }
+        }
+    }
+
+    currentRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    currentRow.style.background = 'var(--accent-light)';
+    setTimeout(() => {
+        currentRow.style.background = '';
+    }, 1000);
+
+    renderQuickSelectSidebar();
+}
+
+function toggleQuickSelectVisibility() {
+    const quickSelectSection = document.getElementById('quickSelectSection');
+    if (!quickSelectSection) return;
+
+    const formSection = document.getElementById('formSection');
+    const adminHomeView = document.getElementById('adminHomeView');
+    const isFormSectionActive = formSection && formSection.style.display !== 'none';
+    const isAdminView = adminHomeView && adminHomeView.style.display !== 'none';
+
+    const shouldShow = isFormSectionActive && !isAdminView && !isAdminMode;
+    if (shouldShow) {
+        quickSelectSection.classList.remove('hide');
+        quickSelectSection.style.display = 'block';
+    } else {
+        quickSelectSection.classList.add('hide');
+        quickSelectSection.style.display = 'none';
     }
 }
 
@@ -167,8 +362,8 @@ window.renderAnalysis = async function () {
             datasets: [{
                 label: 'จำนวนรายการพัสดุ',
                 data: sortedDepts.map(d => d[1]),
-                backgroundColor: 'rgba(99, 102, 241, 0.8)',
-                hoverBackgroundColor: '#4f46e5',
+                backgroundColor: 'rgba(127, 24, 102, 0.84)',
+                hoverBackgroundColor: '#671453',
                 borderRadius: 8,
                 barThickness: 40
             }]
@@ -177,7 +372,7 @@ window.renderAnalysis = async function () {
             responsive: true,
             maintainAspectRatio: false,
             scales: {
-                y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } },
+                y: { beginAtZero: true, grid: { color: '#ece2f1' }, ticks: { stepSize: 1 } },
                 x: { grid: { display: false } }
             },
             plugins: { legend: { display: false } }
@@ -185,11 +380,11 @@ window.renderAnalysis = async function () {
     });
 
     const statusColors = {
-        'รอจัดซื้อ': '#94a3b8',
-        'อยู่ระหว่างจัดซื้อ': '#facc15',
-        'ได้รับบางส่วน': '#3b82f6',
-        'เสร็จสิ้น': '#10b981',
-        'ยกเลิก': '#ef4444'
+        'รอจัดซื้อ': '#8d76a6',
+        'อยู่ระหว่างจัดซื้อ': '#c99700',
+        'ได้รับบางส่วน': '#545ec0',
+        'เสร็จสิ้น': '#2f8a67',
+        'ยกเลิก': '#c33f67'
     };
 
     const statusLabels = Object.keys(stats.statuses);
@@ -199,7 +394,7 @@ window.renderAnalysis = async function () {
             labels: statusLabels,
             datasets: [{
                 data: Object.values(stats.statuses),
-                backgroundColor: statusLabels.map(s => statusColors[s] || '#cbd5e1'),
+                backgroundColor: statusLabels.map(s => statusColors[s] || '#cbbad8'),
                 hoverOffset: 12,
                 borderWidth: 0
             }]
@@ -211,7 +406,7 @@ window.renderAnalysis = async function () {
             plugins: {
                 legend: {
                     position: 'bottom',
-                    labels: { usePointStyle: true, padding: 20, font: { family: 'Prompt', size: 12 } }
+                    labels: { usePointStyle: true, padding: 20, font: { family: 'IBM Plex Sans Thai', size: 12 } }
                 }
             }
         }
@@ -226,8 +421,8 @@ window.renderAnalysis = async function () {
             datasets: [{
                 label: 'จำนวนครั้งที่ขอ',
                 data: sortedItems.map(i => i[1]),
-                backgroundColor: 'rgba(20, 184, 166, 0.8)',
-                hoverBackgroundColor: '#0d9488',
+                backgroundColor: 'rgba(143, 31, 115, 0.82)',
+                hoverBackgroundColor: '#671453',
                 borderRadius: 6,
                 barThickness: 25
             }]
@@ -236,7 +431,7 @@ window.renderAnalysis = async function () {
             responsive: true,
             maintainAspectRatio: false,
             scales: {
-                x: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } },
+                x: { beginAtZero: true, grid: { color: '#ece2f1' }, ticks: { stepSize: 1 } },
                 y: { grid: { display: false } }
             },
             plugins: { legend: { display: false } }
@@ -250,8 +445,8 @@ window.renderAnalysis = async function () {
             datasets: [{
                 label: 'จำนวนรายการคำขอ',
                 data: last7DaysDateStrs.map(dStr => stats.timeline[dStr]),
-                borderColor: '#6366f1',
-                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                borderColor: '#7f1866',
+                backgroundColor: 'rgba(127, 24, 102, 0.13)',
                 fill: true,
                 tension: 0.4,
                 pointRadius: 6,
@@ -264,7 +459,7 @@ window.renderAnalysis = async function () {
             responsive: true,
             maintainAspectRatio: false,
             scales: {
-                y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } },
+                y: { beginAtZero: true, grid: { color: '#ece2f1' }, ticks: { stepSize: 1 } },
                 x: { grid: { display: false } }
             },
             plugins: { legend: { display: false } }
@@ -282,6 +477,7 @@ window.removeItem = function (button) {
         setTimeout(() => {
             row.remove();
             if (typeof window.renumberItems === 'function') window.renumberItems();
+            renderQuickSelectSidebar();
         }, 150);
     } else {
         alert('จำเป็นต้องมีรายการวัสดุอย่างน้อย 1 รายการ');
@@ -337,6 +533,27 @@ document.addEventListener('DOMContentLoaded', () => {
         statusMessage.className = `status-message${type ? ` status-${type}` : ''}`;
     }
 
+    let modeToastTimer = null;
+    function showModeViewToast(isAdmin) {
+        let toast = document.getElementById('modeViewToast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'modeViewToast';
+            toast.className = 'mode-view-toast';
+            document.body.appendChild(toast);
+        }
+
+        toast.textContent = isAdmin
+            ? 'ขณะนี้คุณอยู่ในมุมมอง Admin'
+            : 'ขณะนี้คุณอยู่ในมุมมองผู้ใช้';
+
+        toast.classList.add('show');
+        if (modeToastTimer) clearTimeout(modeToastTimer);
+        modeToastTimer = setTimeout(() => {
+            toast.classList.remove('show');
+        }, 2200);
+    }
+
     function setLoading(isLoading) {
         if (!submitBtn) return;
         submitBtn.disabled = isLoading;
@@ -358,8 +575,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (numEl) numEl.textContent = i + 1;
         });
     }
+    window.renumberItems = renumberItems;
 
-    function addNewItem() {
+    window.addNewItem = function() {
         const clone = itemTemplate.content.cloneNode(true);
         const row = clone.querySelector('.item-row');
 
@@ -391,6 +609,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => {
                 row.remove();
                 renumberItems();
+                renderQuickSelectSidebar();
             }, 150);
         } else {
             alert('จำเป็นต้องมีรายการวัสดุอย่างน้อย 1 รายการ');
@@ -399,22 +618,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     function updateHomeView() {
-        const purchaseForm = document.getElementById('purchaseRequestForm');
+        const userFormView = document.getElementById('userFormView');
         const adminHome = document.getElementById('adminHomeView');
-        if (!purchaseForm || !adminHome) return;
+        if (!userFormView || !adminHome) return;
 
         if (isAdminMode) {
-            purchaseForm.classList.add('hide');
-            purchaseForm.style.display = 'none';
+            userFormView.classList.add('hide');
+            userFormView.style.display = 'none';
             adminHome.classList.remove('hide');
             adminHome.style.display = 'block';
             renderAdminHomeSummary();
         } else {
-            purchaseForm.classList.remove('hide');
-            purchaseForm.style.display = 'block';
+            userFormView.classList.remove('hide');
+            userFormView.style.display = 'grid';
             adminHome.classList.add('hide');
             adminHome.style.display = 'none';
         }
+        toggleQuickSelectVisibility();
     }
 
     function updateAdminSortIcons() {
@@ -456,7 +676,9 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.innerHTML = '⏳';
 
         try {
-            const user = sessionStorage.getItem('loggedInUser') || '';
+            const userStr = sessionStorage.getItem('userData');
+    const userData = userStr ? JSON.parse(userStr) : null;
+    const user = userData ? userData.User : '';
             const res = await fetch(appScriptUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -498,6 +720,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateAdminToggleUI() {
         if (!adminModeToggle) return;
+        const userData = getUserData();
+        if (isAdminMode && !hasAdminAccess(userData)) {
+            isAdminMode = false;
+        }
 
         adminModeToggle.checked = isAdminMode;
         document.body.classList.toggle('admin-theme', isAdminMode);
@@ -575,17 +801,17 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
 
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-                <div class="card" style="padding: 1.5rem; background: linear-gradient(135deg, #E0218A 0%, #CC0000 100%); color: white; border: none; box-shadow: 0 4px 15px rgba(204, 0, 0, 0.2);">
+                <div class="card" style="padding: 1.5rem; background: linear-gradient(135deg, #7f1866 0%, #5d1a70 58%, #3f4fa5 100%); color: white; border: none; box-shadow: 0 6px 20px rgba(127, 24, 102, 0.28);">
                     <div style="font-size: 0.9rem; opacity: 0.9; font-weight: 500;">งานที่ต้องทำทั้งหมด</div>
                     <div style="font-size: 2.2rem; font-weight: 800; letter-spacing: -1px;">${pendingItems.length} <span style="font-size: 1rem; font-weight: 500; opacity: 0.8;">รายการย่อย</span></div>
                 </div>
-                <div class="card" style="padding: 1.5rem; border-left: 5px solid #f59e0b;">
+                <div class="card" style="padding: 1.5rem; border-left: 5px solid #c99700;">
                     <div style="font-size: 0.9rem; color: var(--text-muted);">สถานะ: รอจัดซื้อ</div>
-                    <div style="font-size: 1.8rem; font-weight: 700; color: #b45309;">${pendingItems.filter(i => i['สถานะ'] === 'รอจัดซื้อ').length}</div>
+                    <div style="font-size: 1.8rem; font-weight: 700; color: #916a00;">${pendingItems.filter(i => i['สถานะ'] === 'รอจัดซื้อ').length}</div>
                 </div>
-                <div class="card" style="padding: 1.5rem; border-left: 5px solid #3b82f6;">
+                <div class="card" style="padding: 1.5rem; border-left: 5px solid #545ec0;">
                     <div style="font-size: 0.9rem; color: var(--text-muted);">สถานะ: อยู่ระหว่างจัดซื้อ</div>
-                    <div style="font-size: 1.8rem; font-weight: 700; color: #1d4ed8;">${pendingItems.filter(i => i['สถานะ'] === 'อยู่ระหว่างจัดซื้อ').length}</div>
+                    <div style="font-size: 1.8rem; font-weight: 700; color: #3a468f;">${pendingItems.filter(i => i['สถานะ'] === 'อยู่ระหว่างจัดซื้อ').length}</div>
                 </div>
             </div>
 
@@ -593,7 +819,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <h3 style="margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">📊 แยกตามแผนกที่ส่งคำขอ</h3>
                 <div style="display: flex; flex-direction: column; gap: 0.75rem;">
                     ${Object.entries(deptSummary).map(([name, count]) => `
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: #f8fafc; border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: #faf4fd; border-radius: 10px;">
                             <span style="font-weight: 500;">${name}</span>
                             <span class="status-badge" style="background: var(--accent-color); color: white; min-width: 30px; text-align: center;">${count}</span>
                         </div>
@@ -601,20 +827,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
 
-            <div class="card" style="padding: 1.5rem; margin-top: 2rem;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.75rem;">
-                    <div style="display: flex; align-items: center; gap: 1rem;">
+            <div class="card admin-worklist-card" style="padding: 1.5rem; margin-top: 2rem;">
+                <div class="admin-worklist-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+                    <div class="admin-worklist-left" style="display: flex; align-items: center; gap: 0.75rem;">
                         <h2 style="margin: 0;">🧾 รายการงานที่ต้องทำในขณะนี้</h2>
-                        <select id="adminPriorityFilter" class="form-control" style="width: auto; padding: 0.3rem 0.6rem; font-size: 0.9rem; border-radius: 6px;">
-                            <option value="ทั้งหมด" ${adminPriorityFilter === 'ทั้งหมด' ? 'selected' : ''}>🎯 ทั้งหมด (All Priority)</option>
-                            <option value="ด่วน" ${adminPriorityFilter === 'ด่วน' ? 'selected' : ''}>🚀 ด่วน (Urgent)</option>
-                            <option value="ปกติ" ${adminPriorityFilter === 'ปกติ' ? 'selected' : ''}>📄 ปกติ (Normal)</option>
+                        <select id="adminPriorityFilter" class="form-control" style="width: auto; padding: 0.34rem 0.65rem; font-size: 0.9rem; border-radius: 10px;">
+                            <option value="ทั้งหมด" ${adminPriorityFilter === 'ทั้งหมด' ? 'selected' : ''}>ทั้งหมด (All Priority)</option>
+                            <option value="ด่วน" ${adminPriorityFilter === 'ด่วน' ? 'selected' : ''}>ด่วน (Urgent)</option>
+                            <option value="ปกติ" ${adminPriorityFilter === 'ปกติ' ? 'selected' : ''}>ปกติ (Normal)</option>
                         </select>
-                    </div>
-                    <div style="display: flex; gap: 10px;">
-                        <button id="selectUrgentBtn" class="btn btn-outline" style="font-size: 0.85rem; border-color: #ef4444; color: #ef4444; display: flex; align-items: center; gap: 4px;">
-                            🚩 เลือกเฉพาะด่วน
+                        <button id="selectUrgentBtn" class="btn btn-outline" style="font-size: 0.85rem; border-color: #c33f67; color: #c33f67; display: flex; align-items: center; gap: 4px;">
+                            เฉพาะด่วน
                         </button>
+                    </div>
+                    <div class="admin-worklist-actions" style="display: flex; gap: 10px;">
                         <button id="batchUpdateBtn" class="btn btn-outline" disabled style="display: flex; align-items: center; gap: 5px;">
                             แก้ไขสถานะ
                         </button>
@@ -677,9 +903,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         <tr>
                             <th style="width: 5%; text-align: center;"><input type="checkbox" id="selectAllCheckbox"></th>
                             <th style="width: 25%;">วัสดุ</th>
-                            <th style="width: 10%; cursor: pointer;" onclick="setAdminSort('priority')">จำนวน/Priority <span class="admin-sort-icon sort-priority"></span></th>
-                            <th style="width: 15%;">สถานะ</th>
-                            <th style="width: 15%;">รหัสคำขอ</th>
+                            <th style="width: 14%; cursor: pointer;" onclick="setAdminSort('priority')">จำนวน/Priority <span class="admin-sort-icon sort-priority"></span></th>
+                            <th style="width: 13%;">สถานะ</th>
+                            <th style="width: 14%;">รหัสคำขอ</th>
                             <th style="width: 15%;">แผนก/ผู้ขอ</th>
                             <th style="width: 15%; cursor: pointer;" onclick="setAdminSort('date')">วันที่ขอ <span class="admin-sort-icon sort-date"></span></th>
                         </tr>
@@ -725,16 +951,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         ${item['ไฟล์แนบ URL'] ? `<button onclick="event.stopPropagation(); openImageModal('${item['ไฟล์แนบ URL']}')" class="btn-file-view" style="border:none; background:none; cursor:pointer; font-size:0.75rem; padding: 0;">📂 ดูไฟล์</button>` : ''}
                     </td>
-                    <td>
-                        <div style="display:inline-flex; align-items:center; gap:4px; margin-bottom:4px;">
-                            <input class="form-control inline-qty" data-key="${itemKey}" type="number" step="any" value="${item['จำนวน'] || ''}" style="width:45px; padding:2px; font-size:0.8rem; text-align:center;">
-                            <input class="form-control inline-unit" data-key="${itemKey}" type="text" value="${item['หน่วยนับ'] || ''}" style="width:45px; padding:2px; font-size:0.8rem; text-align:center;">
-                            <button class="btn-inline-save" data-key="${itemKey}" title="บันทึกการแก้ไขเฉพาะรายการนี้" style="border:none; background:none; cursor:pointer; padding:2px; display:none; color:var(--primary-main); font-size:1.1rem; line-height:1;">💾</button>
-                        </div>
-                        <div style="margin-top: 4px;">
-                            <span class="prio-badge ${prioValue === 'ด่วน' ? 'prio-urgent' : 'prio-normal'}">
-                                ${prioValue === 'ด่วน' ? '🚩 ด่วน' : '🏳️ ปกติ'}
+                    <td class="admin-priority-cell">
+                        <div class="admin-priority-row" style="display:inline-flex; flex-direction:row; align-items:flex-start; gap:6px; flex-wrap:nowrap; white-space:nowrap;">
+                            <input class="form-control inline-qty" data-key="${itemKey}" type="number" step="any" value="${item['จำนวน'] || ''}" style="width:52px; padding:2px; font-size:0.8rem; text-align:center;">
+                            <input class="form-control inline-unit" data-key="${itemKey}" type="text" value="${item['หน่วยนับ'] || ''}" style="width:52px; padding:2px; font-size:0.8rem; text-align:center;">
+                            <span class="prio-badge ${prioValue === 'ด่วน' ? 'prio-urgent' : 'prio-normal'} admin-priority-pill">
+                                ${prioValue === 'ด่วน' ? 'ด่วน' : 'ปกติ'}
                             </span>
+                            <button class="btn-inline-save" data-key="${itemKey}" title="บันทึกการแก้ไขเฉพาะรายการนี้" style="border:none; background:none; cursor:pointer; padding:2px; display:none; color:var(--primary-main); font-size:1.1rem; line-height:1;">💾</button>
                         </div>
                     </td>
                     <td>
@@ -965,6 +1189,10 @@ window.renderTrackingTable = async function(targetContainerId = 'trackingContain
     });
 
     const statusKeys = ['รอจัดซื้อ', 'อยู่ระหว่างจัดซื้อ', 'ได้รับบางส่วน', 'เสร็จสิ้น', 'ยกเลิก'];
+    const showDeptColumn = isAdminMode;
+    if (!showDeptColumn && sortState.key === 'deptName') {
+        sortState.key = 'date';
+    }
     let html = '';
 
     statusKeys.forEach(stKey => {
@@ -984,19 +1212,28 @@ window.renderTrackingTable = async function(targetContainerId = 'trackingContain
                             <tr>
                                 <th style="cursor:pointer; width:18%;" onclick="setSort('id')">รหัสคำขอ <span class="sort-icon sort-id"></span></th>
                                 <th style="cursor:pointer; width:15%;" onclick="setSort('date')">วันที่ขอ <span class="sort-icon sort-date"></span></th>
-                                <th style="cursor:pointer; width:12%;" onclick="setSort('deptName')">แผนก <span class="sort-icon sort-deptName"></span></th>
-                                <th style="cursor:pointer; width:15%;" onclick="setSort('requester')">ผู้ขอ <span class="sort-icon sort-requester"></span></th>
-                                <th style="cursor:pointer; width:12%; text-align:center;" onclick="setSort('itemsCount')">จำนวน <span class="sort-icon sort-itemsCount"></span></th>
+                                ${showDeptColumn ? '<th style="cursor:pointer; width:12%;" onclick="setSort(\'deptName\')">แผนก <span class="sort-icon sort-deptName"></span></th>' : ''}
+                                <th style="cursor:pointer; width:${showDeptColumn ? '15' : '21'}%;" onclick="setSort('requester')">ผู้ขอ <span class="sort-icon sort-requester"></span></th>
+                                <th style="cursor:pointer; width:${showDeptColumn ? '12' : '13'}%; text-align:center;" onclick="setSort('itemsCount')">จำนวน <span class="sort-icon sort-itemsCount"></span></th>
                                 <th style="cursor:pointer; width:13%;" onclick="setSort('status')">สถานะ <span class="sort-icon sort-status"></span></th>
-                                <th style="text-align:center; width:15%;">จัดการ</th>
+                                <th style="text-align:center; width:${showDeptColumn ? '15' : '20'}%;">จัดการ</th>
                             </tr>
                         </thead>
                         <tbody>
         `;
 
         reqs.forEach(req => {
+            const userData = getUserData();
+            const userSection = userData ? userData.Section : '';
+            
+            // LOGIC: สิทธิ์ในการแสดงปุ่ม
+            // 1. จัดการ (Manage) - เฉพาะตอนเปิดโหมด Admin เท่านั้น
             const showManageBtn = isAdminMode;
-            const canEdit = req.status === 'รอจัดซื้อ';
+            
+            // 2. แก้ไข/ยกเลิก (Edit/Cancel) - ต้องอยู่ใน Section เดียวกัน และสถานะเป็นรอจัดซื้อ
+            const isSameSection = String(req.deptName).trim() === String(userSection).trim();
+            const canEdit = (req.status === 'รอจัดซื้อ') && isSameSection;
+
             let dateStr = req.date || '-';
             let timeStr = '';
 
@@ -1012,25 +1249,25 @@ window.renderTrackingTable = async function(targetContainerId = 'trackingContain
                 <tr class="tracking-tr" id="req-row-${req.id}" onclick="toggleRequestDetails('${req.id}')">
                     <td style="font-weight:500;"><span class="expand-icon" style="display:inline-block; margin-right:5px;">▶</span>${req.id}</td>
                     <td><div>${dateStr}</div><div class="text-time">${timeStr}</div></td>
-                    <td>${req.deptName || '-'}</td>
+                    ${showDeptColumn ? `<td>${req.deptName || '-'}</td>` : ''}
                     <td>${req.requester || '-'}</td>
                     <td style="text-align:center;">
                         <div style="font-weight:700; color:var(--primary-main);">${req.items.length}</div>
-                        <div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.2rem; font-weight:400; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:140px; margin-left:auto; margin-right:auto;">
+                        <div class="cell-subtext" style="font-size:0.75rem; color:var(--text-muted); margin-top:0.2rem; font-weight:400; overflow:hidden; text-overflow:ellipsis; white-space:normal; word-break:break-word; max-width:140px; margin-left:auto; margin-right:auto; text-align:center;">
                             ${req.items.map(i => i.name).slice(0, 2).join(', ')}${req.items.length > 2 ? '...' : ''}
                         </div>
                     </td>
                     <td><span class="status-badge ${stMeta.cls}">${req.status}</span></td>
                     <td>
-                        <div style="display:flex; gap:5px; justify-content:center;">
-                            ${showManageBtn ? `<button class="btn btn-primary" style="font-size:0.75rem; padding:0.25rem 0.5rem;" onclick="event.stopPropagation(); openAdminModal('${req.id}')">จัดการ</button>` : ''}
-                            ${canEdit ? `<button class="btn btn-outline" style="font-size:0.75rem; padding:0.25rem 0.5rem;" onclick="event.stopPropagation(); editRequest('${req.id}')">แก้ไข</button>` : ''}
-                            ${canEdit ? `<button class="btn btn-danger" style="font-size:0.75rem; padding:0.25rem 0.5rem; border-color:#ef4444;" onclick="event.stopPropagation(); cancelRequest('${req.id}')">ยกเลิก</button>` : ''}
+                        <div class="table-actions" style="display:flex; gap:6px; justify-content:center; align-items:center;">
+                            ${showManageBtn ? `<button class="btn btn-primary" style="font-size:0.85rem; padding:0.5rem 0.85rem; border-radius: 6px; white-space: nowrap; min-width: 70px;" onclick="event.stopPropagation(); openAdminModal('${req.id}')">จัดการ</button>` : ''}
+                            ${canEdit ? `<button class="btn btn-outline" style="font-size:0.85rem; padding:0.5rem 0.85rem; border-radius: 6px; white-space: nowrap; min-width: 70px;" onclick="event.stopPropagation(); editRequest('${req.id}')">แก้ไข</button>` : ''}
+                            ${canEdit ? `<button class="btn btn-danger" style="font-size:0.85rem; padding:0.5rem 0.85rem; border-radius: 6px; white-space: nowrap; min-width: 70px; border-color:#ef4444;" onclick="event.stopPropagation(); cancelRequest('${req.id}')">ยกเลิก</button>` : ''}
                         </div>
                     </td>
                 </tr>
                 <tr id="detail-${req.id}" class="detail-row hide" style="display: none;">
-                    <td colspan="7" style="padding:0; border:none;">
+                    <td colspan="${showDeptColumn ? '7' : '6'}" style="padding:0; border:none;">
                         <div class="detail-container">
                             <div class="detail-header" style="margin-bottom:1rem;">
                                 <strong>รายละเอียดวัสดุ</strong>
@@ -1064,8 +1301,8 @@ window.renderTrackingTable = async function(targetContainerId = 'trackingContain
                                             <tr>
                                                 <td style="font-weight:500; color:var(--text-main);">
                                                     ${it.name || '-'}
-                                                    <div style="margin-top:0.25rem; display:flex; align-items:center; gap:8px;">
-                                                        <span class="status-badge ${stMetaItem.cls}" style="font-size:0.7rem; padding:0.15rem 0.5rem;">${it.status || '-'}</span>
+                                                    <div style="margin-top:0.25rem; display:flex; flex-direction:column; gap:0.25rem;">
+                                                        <span class="status-badge ${stMetaItem.cls}" style="font-size:0.75rem; padding:0.25rem 0.6rem;">${it.status || '-'}</span>
                                                         ${itemTime ? `<span class="text-time" style="font-size:0.75rem;">${itemTime}</span>` : ''}
                                                     </div>
                                                 </td>
@@ -1096,6 +1333,215 @@ window.renderTrackingTable = async function(targetContainerId = 'trackingContain
 
     container.innerHTML = html;
     if (typeof window.updateSortIcons === 'function') window.updateSortIcons();
+};
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function deriveRequestStatus(items) {
+    const statusCounts = {
+        'รอจัดซื้อ': 0,
+        'อยู่ระหว่างจัดซื้อ': 0,
+        'ได้รับบางส่วน': 0,
+        'เสร็จสิ้น': 0,
+        'ยกเลิก': 0
+    };
+
+    items.forEach(it => {
+        if (statusCounts[it.status] !== undefined) statusCounts[it.status]++;
+    });
+
+    const total = items.length;
+    if (total === 0) return 'รอจัดซื้อ';
+    if (total === 1) return items[0].status || 'รอจัดซื้อ';
+
+    const doneTotal = statusCounts['เสร็จสิ้น'] + statusCounts['ยกเลิก'];
+    if (statusCounts['รอจัดซื้อ'] === total) return 'รอจัดซื้อ';
+    if (doneTotal === total && statusCounts['เสร็จสิ้น'] === total) return 'เสร็จสิ้น';
+    if (doneTotal === total && statusCounts['ยกเลิก'] === total) return 'ยกเลิก';
+    if (statusCounts['ได้รับบางส่วน'] > 0 || (statusCounts['เสร็จสิ้น'] > 0 && doneTotal < total)) return 'ได้รับบางส่วน';
+    return 'อยู่ระหว่างจัดซื้อ';
+}
+
+const historyState = {
+    groups: [],
+    listenersAttached: false
+};
+
+function applyHistoryFiltersAndRender() {
+    const container = document.getElementById('historyTableContainer');
+    if (!container) return;
+
+    const searchInput = document.getElementById('historySearchInput');
+    const clearBtn = document.getElementById('clearHistorySearchBtn');
+    const filterSelect = document.getElementById('historyFilterSelect');
+
+    const query = String(searchInput?.value || '').trim().toLowerCase();
+    const filterValue = String(filterSelect?.value || 'ทั้งหมด').trim();
+
+    if (clearBtn) {
+        const shouldShow = query.length > 0;
+        clearBtn.classList.toggle('hide', !shouldShow);
+        clearBtn.style.display = shouldShow ? 'block' : 'none';
+    }
+
+    const filtered = historyState.groups.filter(group => {
+        const statusPass = filterValue === 'ทั้งหมด' ? true : group.status === filterValue;
+        if (!statusPass) return false;
+        if (!query) return true;
+
+        const haystack = [
+            group.id,
+            group.requester,
+            group.deptName,
+            ...group.items.map(it => it.name)
+        ].join(' ').toLowerCase();
+
+        return haystack.includes(query);
+    });
+
+    if (filtered.length === 0) {
+        container.innerHTML = `
+            <div style="text-align:center; padding:2rem; color:var(--text-muted);">
+                ไม่พบข้อมูลประวัติตามเงื่อนไขที่เลือก
+            </div>
+        `;
+        return;
+    }
+
+    const rowsHtml = filtered.map(group => {
+        let dateText = '-';
+        try {
+            const d = new Date(group.date);
+            if (!isNaN(d)) {
+                dateText = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) +
+                    ' ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+            }
+        } catch (_) {}
+
+        const stMeta = STATUS_MAP[group.status] || { cls: 'status-waiting' };
+        const preview = group.items.slice(0, 2).map(it => escapeHtml(it.name)).join(', ');
+        const remain = group.items.length > 2 ? ` +${group.items.length - 2}` : '';
+
+        return `
+            <tr>
+                <td style="font-weight:600;">${escapeHtml(group.id)}</td>
+                <td>${escapeHtml(dateText)}</td>
+                <td>
+                    <div>${escapeHtml(group.deptName || '-')}</div>
+                    <div class="cell-subtext">${escapeHtml(group.requester || '-')}</div>
+                </td>
+                <td style="text-align:center;">
+                    <div style="font-weight:700; color:var(--primary-main);">${group.items.length}</div>
+                    <div class="cell-subtext">${preview}${escapeHtml(remain)}</div>
+                </td>
+                <td><span class="status-badge ${stMeta.cls}">${escapeHtml(group.status)}</span></td>
+            </tr>
+        `;
+    }).join('');
+
+    container.innerHTML = `
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th style="width:18%;">รหัสคำขอ</th>
+                    <th style="width:22%;">วันที่ปิดงาน</th>
+                    <th style="width:22%;">แผนก/ผู้ขอ</th>
+                    <th style="width:23%;">รายการ</th>
+                    <th style="width:15%;">สถานะ</th>
+                </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+        </table>
+    `;
+}
+
+function attachHistoryListeners() {
+    if (historyState.listenersAttached) return;
+
+    const searchInput = document.getElementById('historySearchInput');
+    const clearBtn = document.getElementById('clearHistorySearchBtn');
+    const filterSelect = document.getElementById('historyFilterSelect');
+    if (!searchInput || !clearBtn || !filterSelect) return;
+
+    searchInput.addEventListener('input', applyHistoryFiltersAndRender);
+    filterSelect.addEventListener('change', applyHistoryFiltersAndRender);
+    clearBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        applyHistoryFiltersAndRender();
+        searchInput.focus();
+    });
+
+    historyState.listenersAttached = true;
+}
+
+window.renderHistoryTable = async function() {
+    const container = document.getElementById('historyTableContainer');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div style="text-align:center; padding:2.5rem; color:var(--text-muted);">
+            <div class="spinner" style="width:30px; height:30px; border-width:3px; margin:0 auto 0.8rem;"></div>
+            กำลังโหลดข้อมูลประวัติ...
+        </div>
+    `;
+
+    try {
+        const rawData = await fetchTrackingData();
+        if (!rawData || rawData.length === 0) {
+            historyState.groups = [];
+            attachHistoryListeners();
+            applyHistoryFiltersAndRender();
+            return;
+        }
+
+        const map = {};
+        rawData.forEach(row => {
+            const rid = row['รหัสคำขอ'];
+            if (!rid) return;
+
+            if (!map[rid]) {
+                map[rid] = {
+                    id: rid,
+                    date: row['วันที่-เวลาที่ขอ'],
+                    requester: row['ชื่อผู้ขอ'] || '-',
+                    deptName: row['ชื่อแผนก'] || '-',
+                    items: []
+                };
+            }
+
+            map[rid].items.push({
+                name: row['รายละเอียดวัสดุ'] || '-',
+                status: String(row['สถานะ'] || '').trim() || 'รอจัดซื้อ'
+            });
+        });
+
+        let groups = Object.values(map).map(group => ({
+            ...group,
+            status: deriveRequestStatus(group.items)
+        }));
+
+        groups = groups.filter(g => g.status === 'เสร็จสิ้น' || g.status === 'ยกเลิก');
+        groups.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+        historyState.groups = groups;
+        attachHistoryListeners();
+        applyHistoryFiltersAndRender();
+    } catch (err) {
+        console.error('History Load Error:', err);
+        container.innerHTML = `
+            <div style="text-align:center; padding:2rem; color:var(--text-muted);">
+                <div style="font-size:1.8rem; margin-bottom:0.4rem;">⚠️</div>
+                ไม่สามารถโหลดข้อมูลประวัติได้
+            </div>
+        `;
+    }
 };
 
 window.toggleRequestDetails = function (id) {
@@ -1219,10 +1665,9 @@ window.updateSortIcons = function() {
 
         document.getElementById('employeeName').value = req.requester || '';
 
-        const dCode = Object.keys(DEPT_MAP).find(k => DEPT_MAP[k] === req.deptName) || req.deptCode;
-        if (dCode) {
-            currentDeptCode = dCode;
-            if (deptDisplay) deptDisplay.innerText = DEPT_MAP[dCode] || dCode;
+        if (req.deptName) {
+            currentDeptCode = req.deptCode || req.deptName;
+            if (deptDisplay) deptDisplay.innerText = req.deptName;
         }
 
         itemsContainer.innerHTML = '';
@@ -1237,6 +1682,16 @@ window.updateSortIcons = function() {
             currentRow.querySelector('.item-asset').value = item.asset || '';
             currentRow.querySelector('.item-remarks').value = item.rem || '';
 
+            const fileUrlInput = currentRow.querySelector('.item-file-url');
+            const fileStatusLabel = currentRow.querySelector('.item-file-status');
+            if (item.url) {
+                if (fileUrlInput) fileUrlInput.value = item.url;
+                if (fileStatusLabel) {
+                    fileStatusLabel.textContent = '🖼️ มีรูปเดิมแนบอยู่';
+                    fileStatusLabel.style.color = 'var(--accent-color)';
+                }
+            }
+
             const toggle = currentRow.querySelector('.item-priority-toggle');
             const note = currentRow.querySelector('.priority-note');
             if (toggle) {
@@ -1245,6 +1700,7 @@ window.updateSortIcons = function() {
                 if (note) note.style.display = isUrgent ? 'inline-block' : 'none';
             }
         });
+        renderQuickSelectSidebar();
 
         showStatus(`🔨 คุณกำลังแก้ไขคำขอ: ${id} (ไฟล์แนบเดิมจะหายหากไม่แนบใหม่)`, 'success');
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1259,6 +1715,7 @@ window.updateSortIcons = function() {
         form.reset();
         itemsContainer.innerHTML = '';
         addNewItem();
+        renderQuickSelectSidebar();
         showStatus('ยกเลิกการแก้ไขแล้ว', '');
     };
 
@@ -1280,7 +1737,9 @@ window.updateSortIcons = function() {
 
         setLoading(true);
         try {
-            const user = sessionStorage.getItem('loggedInUser') || '';
+            const userStr = sessionStorage.getItem('userData');
+    const userData = userStr ? JSON.parse(userStr) : null;
+    const user = userData ? userData.User : '';
             const itemsToUpdate = req.items.map(it => ({
                 index: it.index,
                 status: 'ยกเลิก',
@@ -1375,7 +1834,9 @@ window.updateSortIcons = function() {
         if (!appScriptUrl) return;
 
         const id = adminReqIdSpan.innerText;
-        const user = sessionStorage.getItem('loggedInUser') || '';
+        const userStr = sessionStorage.getItem('userData');
+    const userData = userStr ? JSON.parse(userStr) : null;
+    const user = userData ? userData.User : '';
         const itemRows = document.querySelectorAll('.admin-item-row');
         const itemsToUpdate = [];
         let isValid = true;
@@ -1423,7 +1884,7 @@ window.updateSortIcons = function() {
             const result = await res.json();
             if (result.status === 'success') {
                 saveStatusBtn.innerHTML = '✅ บันทึกสำเร็จ';
-                saveStatusBtn.style.background = '#10b981';
+                saveStatusBtn.style.background = 'var(--success)';
 
                 setTimeout(() => {
                     showStatus(`✅ อัปเดตสถานะคำขอ ${id} สำเร็จ`, 'success');
@@ -1528,7 +1989,9 @@ window.updateSortIcons = function() {
         const appScriptUrl = getAppScriptUrl();
         if (!appScriptUrl) return;
 
-        const user = sessionStorage.getItem('loggedInUser') || '';
+        const userStr = sessionStorage.getItem('userData');
+    const userData = userStr ? JSON.parse(userStr) : null;
+    const user = userData ? userData.User : '';
         const rows = document.querySelectorAll('.batch-admin-item-row');
         const groups = {};
         let isValid = true;
@@ -1594,6 +2057,50 @@ window.updateSortIcons = function() {
     });
 
 
+    function fitPrintLineToCell(span, cell, maxSizePx = 11.5, minSizePx = 7.2) {
+        if (!span || !cell) return;
+
+        let size = maxSizePx;
+        span.style.fontSize = `${size}px`;
+        span.style.transform = 'none';
+        span.style.transformOrigin = '';
+
+        const availableWidth = Math.max((cell.clientWidth || cell.offsetWidth) - 6, 40);
+        while (span.scrollWidth > availableWidth && size > minSizePx) {
+            size -= 0.25;
+            span.style.fontSize = `${size}px`;
+        }
+
+        if (span.scrollWidth > availableWidth) {
+            const scaleX = Math.max(availableWidth / span.scrollWidth, 0.72);
+            span.style.transform = `scaleX(${scaleX})`;
+            span.style.transformOrigin = 'center top';
+        }
+    }
+
+    function fitProcurementRequestIdCells() {
+        const reqSpans = document.querySelectorAll('#printWorksheetBody .print-req-id');
+        reqSpans.forEach(span => {
+            const cell = span.closest('.print-req-cell');
+            fitPrintLineToCell(span, cell, 11.5, 7.5);
+        });
+    }
+
+    function fitProcurementDeptUserCells() {
+        const deptUserCells = document.querySelectorAll('#printWorksheetBody .print-dept-user-cell');
+        deptUserCells.forEach(cell => {
+            const deptLine = cell.querySelector('.print-dept-line');
+            const userLine = cell.querySelector('.print-user-line');
+            fitPrintLineToCell(deptLine, cell, 11, 6.9);
+            fitPrintLineToCell(userLine, cell, 11, 6.9);
+        });
+    }
+
+    function fitProcurementPrintTableCells() {
+        fitProcurementRequestIdCells();
+        fitProcurementDeptUserCells();
+    }
+
     window.openProcurementPrintModal = function (items) {
         const modal = document.getElementById('procurementPrintModal');
         const body = document.getElementById('printWorksheetBody');
@@ -1610,8 +2117,11 @@ window.updateSortIcons = function() {
                 <td style="text-align:center;">${idx + 1}</td>
                 <td>${it['รายละเอียดวัสดุ'] || '-'}</td>
                 <td style="text-align:center;">${it['จำนวน'] || '-'} ${it['หน่วยนับ'] || ''}</td>
-                <td style="text-align:center;">${it['ชื่อแผนก'] || '-'}<br>${it['ชื่อผู้ขอ'] || '-'}</td>
-                <td style="text-align:center; white-space:nowrap;">${it['รหัสคำขอ'] || '-'}</td>
+                <td class="print-dept-user-cell">
+                    <span class="print-dept-line">${it['ชื่อแผนก'] || '-'}</span>
+                    <span class="print-user-line">${it['ชื่อผู้ขอ'] || '-'}</span>
+                </td>
+                <td class="print-req-cell"><span class="print-req-id">${it['รหัสคำขอ'] || '-'}</span></td>
                 <td>${it['หมายเหตุ'] || '-'}</td>
             </tr>
         `).join('');
@@ -1619,6 +2129,7 @@ window.updateSortIcons = function() {
         window.currentProcurementPrintItems = items;
         modal.classList.remove('hide');
         modal.style.display = 'flex';
+        requestAnimationFrame(() => fitProcurementPrintTableCells());
     };
 
     window.closeProcurementPrintModal = function () {
@@ -1646,7 +2157,9 @@ window.updateSortIcons = function() {
                 });
             });
 
-            const user = sessionStorage.getItem('loggedInUser') || '';
+            const userStr = sessionStorage.getItem('userData');
+    const userData = userStr ? JSON.parse(userStr) : null;
+    const user = userData ? userData.User : '';
             try {
                 for (const [reqId, reqItems] of Object.entries(grouped)) {
                     await fetch(appScriptUrl, {
@@ -1671,6 +2184,13 @@ window.updateSortIcons = function() {
         renderTrackingTable();
     };
 
+    window.addEventListener('resize', () => {
+        const modal = document.getElementById('procurementPrintModal');
+        if (modal && modal.style.display !== 'none' && !modal.classList.contains('hide')) {
+            fitProcurementPrintTableCells();
+        }
+    });
+
     window.removeItem = function (button) {
         const row = button.closest('.item-row');
         const container = document.getElementById('itemsContainer');
@@ -1681,34 +2201,63 @@ window.updateSortIcons = function() {
             setTimeout(() => {
                 row.remove();
                 renumberItems();
+                renderQuickSelectSidebar();
             }, 150);
         } else {
             alert('จำเป็นต้องมีรายการวัสดุอย่างน้อย 1 รายการ');
         }
     };
 
-    function checkLogin() {
-        const loggedInUser = sessionStorage.getItem('loggedInUser');
-        if (loggedInUser && userMapping[loggedInUser]) {
-            const userData = userMapping[loggedInUser];
+async function checkLogin() {
+    const userStr = sessionStorage.getItem('userData');
+    if (userStr) {
+        try {
+            const userData = JSON.parse(userStr);
+            const isAdmin = hasAdminAccess(userData);
 
-            if (userData.role === 'admin') {
+            if (isAdmin) {
                 adminToggleContainer.classList.remove('hide');
                 adminToggleContainer.style.display = 'inline-flex';
-                isAdminMode = true;
+                // By default, let user decide when to switch to admin mode
                 updateAdminToggleUI();
             } else {
                 adminToggleContainer.classList.add('hide');
                 adminToggleContainer.style.display = 'none';
                 isAdminMode = false;
+                if (adminModeToggle) adminModeToggle.checked = false;
+                updateAdminToggleUI();
             }
 
             loginContainer.style.display = 'none';
             mainAppContainer.classList.remove('hide');
             mainAppContainer.style.display = 'flex';
 
-            currentDeptCode = userData.code;
-            if (deptDisplay) deptDisplay.textContent = userData.name;
+            // Set user data to UI
+            currentDeptCode = userData.Section; // Use Section name as dept code/name
+            if (deptDisplay) deptDisplay.textContent = userData.Section;
+            document.getElementById('employeeName').value = userData.User;
+            
+            // ปรับแต่งชื่อสำหรับแสดงในข้อความทักทาย (ตัดคำนำหน้าและนามสกุล)
+            let displayName = String(userData.User || '').trim();
+            const titles = ['นาย', 'นางสาว', 'น.ส.', 'นาง', 'ว่าที่ร.ต.', 'ว่าที่ ร.ต.'];
+            titles.forEach(title => {
+                if (displayName.startsWith(title)) {
+                    displayName = displayName.replace(title, '');
+                }
+            });
+            // ตัดช่องว่างและเอานามสกุลออก (เอาเฉพาะชื่อตัวแรก)
+            displayName = displayName.trim().split(' ')[0];
+
+            const greetingText = document.getElementById('greetingText');
+            if (greetingText) greetingText.textContent = `สวัสดี! คุณ${displayName}`;
+            
+            const greetingContainer = document.getElementById('greetingContainer');
+            if (greetingContainer) {
+                greetingContainer.classList.remove('hide');
+                greetingContainer.style.display = 'block';
+            }
+
+            toggleQuickSelectVisibility();
 
             const dateSpan = document.getElementById('headerDate');
             if (dateSpan) {
@@ -1721,48 +2270,98 @@ window.updateSortIcons = function() {
             }
 
             const sidebarDept = document.getElementById('sidebarUserDept');
-            if (sidebarDept) sidebarDept.textContent = userData.name;
+            if (sidebarDept) sidebarDept.textContent = userData.User;
+        } catch (e) {
+            console.error('Session data error:', e);
+            sessionStorage.removeItem('userData');
         }
     }
+}
 
-    loginForm?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const username = document.getElementById('loginUsername').value.trim().toLowerCase();
+loginForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = document.getElementById('loginUsername').value.trim();
+    const appScriptUrl = getAppScriptUrl();
 
-        if (userMapping[username]) {
-            sessionStorage.setItem('loggedInUser', username);
-            const userRole = userMapping[username].role;
-            isAdminMode = userRole === 'admin';
-            checkLogin();
+    if (!appScriptUrl) {
+        alert('กรุณาตั้งค่า APPS_SCRIPT_URL ใน config.js');
+        return;
+    }
+
+    const loginBtn = loginForm.querySelector('button[type="submit"]');
+    const originalText = loginBtn.textContent;
+    loginBtn.disabled = true;
+    loginBtn.textContent = 'กำลังตรวจสอบ...';
+    loginError.classList.add('hide');
+
+    try {
+        const url = `${appScriptUrl}?action=login&code=${encodeURIComponent(code)}&t=${Date.now()}`;
+        const res = await fetch(url);
+        const result = await res.json();
+
+        if (result.status === 'success') {
+            sessionStorage.setItem('userData', JSON.stringify(result.user));
+            await checkLogin();
             renderTrackingTable();
         } else {
-            loginError.textContent = '❌ ชื่อผู้ใช้งานไม่ถูกต้อง กรุณาลองใหม่';
+            loginError.textContent = '❌ ' + (result.message || 'รหัสพนักงานไม่ถูกต้อง');
             loginError.classList.remove('hide');
             loginError.style.display = 'block';
         }
-    });
+    } catch (err) {
+        console.error('Login Error:', err);
+        loginError.textContent = '❌ เกิดข้อผิดพลาดในการเชื่อมต่อ';
+        loginError.classList.remove('hide');
+        loginError.style.display = 'block';
+    } finally {
+        loginBtn.disabled = false;
+        loginBtn.textContent = originalText;
+    }
+});
 
-    adminModeToggle?.addEventListener('change', () => {
-        isAdminMode = adminModeToggle.checked;
+adminModeToggle?.addEventListener('change', () => {
+    const userData = getUserData();
+    if (!hasAdminAccess(userData)) {
+        isAdminMode = false;
+        adminModeToggle.checked = false;
         updateAdminToggleUI();
         renderTrackingTable();
+        return;
+    }
 
-        const activeBtn = document.querySelector('.sidebar-menu-btn.active');
-        if (activeBtn?.getAttribute('data-target') === 'analysisSection') {
-            renderAnalysis();
-        }
-    });
+    isAdminMode = adminModeToggle.checked;
+    updateAdminToggleUI();
+    renderTrackingTable();
+    showModeViewToast(isAdminMode);
 
-    logoutBtn?.addEventListener('click', () => {
-        sessionStorage.removeItem('loggedInUser');
-        isAdminMode = false;
-        loginContainer.style.display = 'flex';
-        mainAppContainer.classList.add('hide');
-        mainAppContainer.style.display = 'none';
-        document.getElementById('loginUsername').value = '';
-        loginError.classList.add('hide');
-        loginError.style.display = 'none';
-    });
+    const activeBtn = document.querySelector('.sidebar-menu-btn.active');
+    if (activeBtn?.getAttribute('data-target') === 'analysisSection') {
+        renderAnalysis();
+    }
+});
+
+logoutBtn?.addEventListener('click', () => {
+    sessionStorage.removeItem('userData');
+    isAdminMode = false;
+    loginContainer.style.display = 'flex';
+    mainAppContainer.classList.add('hide');
+    mainAppContainer.style.display = 'none';
+    
+    const greetingContainer = document.getElementById('greetingContainer');
+    if (greetingContainer) {
+        greetingContainer.classList.add('hide');
+        greetingContainer.style.display = 'none';
+    }
+
+    const sidebarName = document.getElementById('sidebarUserName');
+    if (sidebarName) sidebarName.textContent = 'ผู้ใช้งานระบบ';
+    const sidebarDept = document.getElementById('sidebarUserDept');
+    if (sidebarDept) sidebarDept.textContent = 'แผนก / กฟส.';
+
+    document.getElementById('loginUsername').value = '';
+    loginError.classList.add('hide');
+    loginError.style.display = 'none';
+});
 
     sidebarToggle?.addEventListener('click', () => {
         sidebar.classList.toggle('collapsed');
@@ -1796,6 +2395,9 @@ window.updateSortIcons = function() {
             } else if (targetId === 'historySection' && window.renderHistoryTable) {
                 window.renderHistoryTable();
             }
+
+            // Toggle Quick Select visibility based on current section
+            toggleQuickSelectVisibility();
         });
     });
 
@@ -1809,6 +2411,8 @@ window.updateSortIcons = function() {
             const b64 = row.querySelector('.item-file-base64');
             const fname = row.querySelector('.item-file-name');
             const fmime = row.querySelector('.item-file-mime');
+            const fstatus = row.querySelector('.item-file-status');
+            const furl = row.querySelector('.item-file-url');
 
             if (file) {
                 if (file.size > 10 * 1024 * 1024) {
@@ -1817,6 +2421,7 @@ window.updateSortIcons = function() {
                     b64.value = '';
                     fname.value = '';
                     fmime.value = '';
+                    if (fstatus) fstatus.textContent = '';
                     return;
                 }
 
@@ -1825,12 +2430,18 @@ window.updateSortIcons = function() {
                     b64.value = ev.target.result.split(',')[1];
                     fname.value = file.name;
                     fmime.value = file.type;
+                    if (furl) furl.value = '';
+                    if (fstatus) {
+                        fstatus.textContent = `📎 ${file.name}`;
+                        fstatus.style.color = 'var(--accent-color)';
+                    }
                 };
                 reader.readAsDataURL(file);
             } else {
                 b64.value = '';
                 fname.value = '';
                 fmime.value = '';
+                if (fstatus) fstatus.textContent = '';
             }
         }
     });
@@ -1868,6 +2479,7 @@ window.updateSortIcons = function() {
             const b64 = row.querySelector('.item-file-base64').value;
             const fn = row.querySelector('.item-file-name').value;
             const fm = row.querySelector('.item-file-mime').value;
+            const furl = row.querySelector('.item-file-url') ? row.querySelector('.item-file-url').value : '';
 
             const prioToggle = row.querySelector('.item-priority-toggle');
             const prio = (prioToggle && prioToggle.checked) ? 'ด่วน' : 'ปกติ';
@@ -1880,7 +2492,7 @@ window.updateSortIcons = function() {
                     assetCode: asset || '',
                     remarks: remarks || '',
                     priority: prio,
-                    file: b64 ? { data: b64, name: fn, mimeType: fm } : null
+                    file: (b64 || furl) ? { data: b64, name: fn, mimeType: fm, url: furl } : null
                 });
             } else {
                 valid = false;
@@ -1896,9 +2508,9 @@ window.updateSortIcons = function() {
 
         let html = '<ul class="confirm-summary-list">';
         html += `<li><span class="item-label">ผู้ขอ</span><span class="item-value">${empName}</span></li>`;
-        const u = sessionStorage.getItem('loggedInUser');
-        const dn = (u && userMapping[u]) ? userMapping[u].name : '-';
-        html += `<li><span class="item-label">แผนก</span><span class="item-value">${dn}</span></li>`;
+        const userData = getUserData();
+        const ds = userData ? userData.Section : '-';
+        html += `<li><span class="item-label">แผนก/สังกัด</span><span class="item-value">${ds}</span></li>`;
         html += `<li><span class="item-label">จำนวนรายการ</span><span class="item-value">${payload.items.length} รายการ</span></li>`;
         payload.items.forEach((item, i) => {
             html += `<li><span class="item-label">${i + 1}. ${item.itemName}</span><span class="item-value">${item.quantity} ${item.unit}</span></li>`;
@@ -1951,10 +2563,11 @@ window.updateSortIcons = function() {
                     form.reset();
                     itemsContainer.innerHTML = '';
                     addNewItem();
+                    renderQuickSelectSidebar();
 
                     if (deptDisplay) {
-                        const u2 = sessionStorage.getItem('loggedInUser');
-                        if (u2 && userMapping[u2]) deptDisplay.textContent = userMapping[u2].name;
+                        const userData = getUserData();
+                        if (userData) deptDisplay.textContent = userData.Section;
                     }
                 }
 
@@ -1983,8 +2596,31 @@ window.updateSortIcons = function() {
         }
     });
 
+    imageModal?.addEventListener('click', (e) => {
+        if (e.target === imageModal) closeImageModal();
+    });
+
+    // Load Quick Select data
+    fetchQuickSelectData().then(data => {
+        quickSelectData = data;
+        renderQuickSelectSidebar();
+        // Set initial visibility based on current section
+        toggleQuickSelectVisibility();
+    }).catch(err => {
+        console.error('Failed to load Quick Select data:', err);
+        const container = document.getElementById('quickSelectContainer');
+        if (container) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">⚠️</div>
+                    ไม่สามารถโหลดข้อมูลวัสดุยอดนิยมได้
+                </div>
+            `;
+        }
+    });
+
     checkLogin();
-    if (sessionStorage.getItem('loggedInUser')) {
+    if (sessionStorage.getItem('userData')) {
         renderTrackingTable();
     }
 });

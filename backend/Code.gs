@@ -12,19 +12,28 @@
 
 const SHEET_TAB_NAME = 'Sheet1';
 
-// Admin users who can use updateStatus
-const ADMIN_USERS = ['ssa141'];
+// Helper: ตรวจสอบสิทธิ์ Admin จาก Sheet Users_Name
+function checkAdminRole(employeeName) {
+  const ssId = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
+  const ss = SpreadsheetApp.openById(ssId);
+  const userSheet = ss.getSheetByName('Users_Name');
+  if (!userSheet) return false;
 
-const DEPT_MAP = {
-  '01': 'ผบส.',
-  '02': 'ผสน.',
-  '03': 'ผบร.',
-  '04': 'ผกส.',
-  '05': 'ผปบ.',
-  '06': 'ผมต.',
-  '07': 'กฟส.ดอยหล่อ',
-  '08': 'กฟส.แม่แจ่ม'
-};
+  const uData = userSheet.getDataRange().getValues();
+  const uHeaders = uData[0].map(h => String(h).trim());
+  const userIdx = uHeaders.indexOf('Code');
+  const r1Idx = uHeaders.indexOf('Role_1');
+  const r2Idx = uHeaders.indexOf('Role_2');
+
+  for (let i = 1; i < uData.length; i++) {
+    if (String(uData[i][userIdx]).trim() === String(employeeName).trim()) {
+      const r1 = String(uData[i][r1Idx] || '').toLowerCase().trim();
+      const r2 = String(uData[i][r2Idx] || '').toLowerCase().trim();
+      return r1 === 'admin' || r2 === 'admin';
+    }
+  }
+  return false;
+}
 
 // =====================================================
 // Helper: เปิด Sheet จาก Script Properties
@@ -85,8 +94,8 @@ function doPost(e) {
     } else if (action === 'updateRequest') {
       return handleUpdateRequest(data);
     } else if (action === 'updateStatus') {
-      // #15: Only admin can update status
-      if (!data.updatedBy || ADMIN_USERS.indexOf(data.updatedBy) === -1) {
+      // ตรวจสอบสิทธิ์ Admin แบบไดนามิกจาก Sheet
+      if (!data.updatedBy || !checkAdminRole(data.updatedBy)) {
         return jsonResponse({ status: 'error', message: 'ไม่มีสิทธิ์เปลี่ยนสถานะ: เฉพาะ Admin เท่านั้น' });
       }
       return handleUpdateStatus(data);
@@ -100,31 +109,52 @@ function doPost(e) {
 // =====================================================
 // doGet — ดึงข้อมูลสำหรับ Tracking / History
 // =====================================================
+// Helper: ตรวจสอบสิทธิ์ Admin จาก Sheet Users_Name
+function checkAdminRole(employeeName) {
+  if (!employeeName) return false;
+  const ssId = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
+  const ss = SpreadsheetApp.openById(ssId);
+  const userSheet = ss.getSheetByName('Users_Name');
+  if (!userSheet) return false;
+
+  const uData = userSheet.getDataRange().getValues();
+  const uHeaders = uData[0].map(h => String(h).trim());
+  const userIdx = uHeaders.indexOf('User');
+  const r1Idx = uHeaders.indexOf('Role_1');
+  const r2Idx = uHeaders.indexOf('Role_2');
+
+  for (let i = 1; i < uData.length; i++) {
+    if (String(uData[i][userIdx]).trim() === String(employeeName).trim()) {
+      const r1 = String(uData[i][r1Idx] || '').toLowerCase().trim();
+      const r2 = String(uData[i][r2Idx] || '').toLowerCase().trim();
+      return r1 === 'admin' || r2 === 'admin';
+    }
+  }
+  return false;
+}
+
 function doGet(e) {
   try {
     const params = e.parameter;
     const action = params.action || 'tracking'; 
-    const deptCode = params.deptCode || '';
+    const userSection = params.deptCode || ''; // เปลี่ยนเป็นสื่อความหมายว่าเป็น Section ของ User
     const role = params.role || 'user';
 
     const sheet = getSheet();
     const allData = sheet.getDataRange().getValues();
-    
-    // ถ้าไม่มีข้อมูลเลยนอกจาก Header
-    if (allData.length <= 1) {
-      return jsonResponse({ status: 'success', data: [] });
-    }
+    if (allData.length <= 1) return jsonResponse({ status: 'success', data: [] });
 
     const headers = allData[0];
-    const deptCodeColIndex = 2; // Column C index
-    
-    // 1. กรองสิทธิ์เบื้องต้น (ถ้าไม่ใช่ admin ให้กรองแผนก)
+    const deptNameColIndex = 3; // Column D: ชื่อแผนก (Section)
+
     let filteredRows = allData.slice(1);
-    if (role !== 'admin' && deptCode) {
+
+    // LOGIC: ถ้าไม่ใช่ admin หรือไม่ได้เปิดโหมด admin ให้กรองเอาเฉพาะ Section ตัวเอง
+    if (role !== 'admin' && userSection) {
       filteredRows = filteredRows.filter(row => {
-        const rowDept = String(row[deptCodeColIndex]).trim();
-        const userDept = String(deptCode).trim();
-        return rowDept === userDept || parseInt(rowDept) === parseInt(userDept);
+        const rowDept = String(row[deptNameColIndex]).trim();
+        const targetDept = String(userSection).trim();
+        return rowDept === targetDept;
       });
     }
 
@@ -140,14 +170,70 @@ function doGet(e) {
       return obj;
     });
 
-    // 3. กรองตามประเภทหน้า (Tracking / History)
-    if (action === 'tracking') {
+    // 3. กรองตามประเภทหน้า (Tracking / History / QuickSelect / Login)
+    if (action === 'login') {
+      const code = params.code || '';
+      if (!code) return jsonResponse({ status: 'error', message: 'กรุณาระบุรหัสพนักงาน' });
+
+      const ssId = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
+      const ss = SpreadsheetApp.openById(ssId);
+      const userSheet = ss.getSheetByName('Users_Name');
+      if (!userSheet) return jsonResponse({ status: 'error', message: 'ไม่พบ Sheet รายชื่อผู้ใช้งาน (Users_Name)' });
+
+      const uData = userSheet.getDataRange().getValues();
+      const uHeaders = uData[0].map(h => String(h).trim());
+      const codeIdx = uHeaders.indexOf('Code');
+
+      for (let i = 1; i < uData.length; i++) {
+        if (String(uData[i][codeIdx]).trim() === String(code).trim()) {
+          const userObj = {};
+          uHeaders.forEach((h, j) => {
+            userObj[h] = uData[i][j];
+          });
+          return jsonResponse({ status: 'success', user: userObj });
+        }
+      }
+      return jsonResponse({ status: 'error', message: 'ไม่พบรหัสพนักงานนี้ในระบบ' });
+    } else if (action === 'tracking') {
       results = results.filter(r => {
         const status = String(r['สถานะ'] || '').trim();
         return status !== ''; // Allow all statuses including 'เสร็จสิ้น'
       });
     } else if (action === 'history') {
       results = results.filter(r => String(r['สถานะ'] || '').trim() === 'เสร็จสิ้น');
+    } else if (action === 'quickSelect') {
+      const ssId = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
+      const ss = SpreadsheetApp.openById(ssId);
+      
+      // Try finding by name first
+      let quickSheet = ss.getSheetByName('QuickSelect') || ss.getSheetByName('วัสดุยอดนิยม');
+      
+      // If not found, look for any sheet that has 'ชื่อวัสดุ' in row 1
+      if (!quickSheet) {
+        const sheets = ss.getSheets();
+        for (const s of sheets) {
+          const firstRow = s.getRange(1, 1, 1, 5).getValues()[0];
+          if (firstRow.indexOf('ชื่อวัสดุ') !== -1) {
+            quickSheet = s;
+            break;
+          }
+        }
+      }
+
+      if (!quickSheet) return jsonResponse({ status: 'error', message: 'หา Sheet สำหรับ Quick Select ไม่เจอ (กรุณาตั้งชื่อ QuickSelect หรือมีหัวตาราง ชื่อวัสดุ)' });
+
+      const qData = quickSheet.getDataRange().getValues();
+      if (qData.length <= 1) return jsonResponse({ status: 'success', data: [] });
+
+      const qHeaders = qData[0].map(h => String(h).trim());
+      const qResults = qData.slice(1).map(row => {
+        const obj = {};
+        qHeaders.forEach((h, i) => {
+          if (h) obj[h] = row[i];
+        });
+        return obj;
+      });
+      return jsonResponse({ status: 'success', data: qResults });
     }
 
     return jsonResponse({ status: 'success', data: results });
@@ -186,19 +272,23 @@ function handleSubmit(data) {
   const sheet = getSheet();
   const timestamp = new Date();
   const requestId = generateRequestId();
-  const deptName = DEPT_MAP[data.department] || data.department;
+  const deptName = data.department;
 
   let folder = null;
   const rows = [];
 
   data.items.forEach((item, index) => {
     let fileUrl = '';
-    if (item.file && item.file.data) {
-      if (!folder) folder = getFolder();
-      const decoded = Utilities.base64Decode(item.file.data);
-      const blob = Utilities.newBlob(decoded, item.file.mimeType, requestId + '_' + (index + 1) + '_' + item.file.name);
-      const driveFile = folder.createFile(blob);
-      fileUrl = 'https://drive.google.com/uc?id=' + driveFile.getId();
+    if (item.file) {
+      if (item.file.data) {
+        if (!folder) folder = getFolder();
+        const decoded = Utilities.base64Decode(item.file.data);
+        const blob = Utilities.newBlob(decoded, item.file.mimeType, requestId + '_' + (index + 1) + '_' + item.file.name);
+        const driveFile = folder.createFile(blob);
+        fileUrl = 'https://drive.google.com/uc?id=' + driveFile.getId();
+      } else if (item.file.url) {
+        fileUrl = item.file.url;
+      }
     }
 
     rows.push([
@@ -255,18 +345,22 @@ function handleUpdateRequest(data) {
     }
   }
 
-  const deptName = DEPT_MAP[data.department] || data.department;
+  const deptName = data.department;
   let folder = null;
   const rows = [];
 
   data.items.forEach((item, index) => {
     let fileUrl = '';
-    if (item.file && item.file.data) {
-      if (!folder) folder = getFolder();
-      const decoded = Utilities.base64Decode(item.file.data);
-      const blob = Utilities.newBlob(decoded, item.file.mimeType, requestId + '_' + (index + 1) + '_' + item.file.name);
-      const driveFile = folder.createFile(blob);
-      fileUrl = 'https://drive.google.com/uc?id=' + driveFile.getId();
+    if (item.file) {
+      if (item.file.data) {
+        if (!folder) folder = getFolder();
+        const decoded = Utilities.base64Decode(item.file.data);
+        const blob = Utilities.newBlob(decoded, item.file.mimeType, requestId + '_' + (index + 1) + '_' + item.file.name);
+        const driveFile = folder.createFile(blob);
+        fileUrl = 'https://drive.google.com/uc?id=' + driveFile.getId();
+      } else if (item.file.url) {
+        fileUrl = item.file.url;
+      }
     }
 
     rows.push([

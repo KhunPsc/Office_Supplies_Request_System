@@ -7,7 +7,7 @@
     <title>ระบบแจ้งคำขอซื้อวัสดุสำนักงาน PEAจอมทอง</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Configuration -->
     <script src="config.js"></script>
     <!-- Chart.js for Analysis Dashboard -->
@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="style.css">
 </head>
 
-<body>
+<body class="design-airtable">
 
     <!-- ==================== LOGIN ==================== -->
     <div class="login-container" id="loginContainer">
@@ -24,9 +24,9 @@
             <p class="subtitle">ระบบแจ้งคำขอซื้อวัสดุสำนักงาน PEAจอมทอง</p>
             <form id="loginForm" style="text-align: left;">
                 <div class="form-group">
-                    <label for="loginUsername">Username รายแผนก <span class="required-asterisk">*</span></label>
-                    <input type="text" id="loginUsername" required placeholder="รหัสผู้ใช้งาน..."
-                        style="text-transform: lowercase;">
+                    <label for="loginUsername">รหัสพนักงาน <span class="required-asterisk">*</span></label>
+                    <input type="text" id="loginUsername" required placeholder="กรอกรหัสพนักงาน"
+                        style="text-align: center; letter-spacing: 2px; font-size: 1.1rem;">
                 </div>
                 <button type="submit" class="btn btn-primary"
                     style="width: 100%; justify-content: center; padding: 0.75rem;">เข้าใช้งาน</button>
@@ -74,12 +74,17 @@
 
                 <button class="sidebar-menu-btn" data-target="historySection">ประวัติ</button>
             </nav>
-            <div class="sidebar-user">
-                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="12" cy="7" r="4"></circle>
-                </svg>
-                <span id="sidebarUserDept">ผู้ใช้งานระบบ</span>
+            <div class="sidebar-user" style="display: flex; flex-direction: column; align-items: flex-start; gap: 0.25rem; padding: 1.25rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 500; color: white;">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    <span id="sidebarUserName">ผู้ใช้งานระบบ</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: rgba(255, 255, 255, 0.7); padding-left: 1.6rem;">
+                    <span id="sidebarUserDept">แผนก / กฟส.</span>
+                </div>
             </div>
         </aside>
 
@@ -123,36 +128,27 @@
                 <!-- ===== TAB 1: Form ===== -->
                 <section id="formSection" class="tab-pane">
 
-                    <!-- New: Admin Workboard Home View -->
-                    <div id="adminHomeView" class="hide" style="display:none;">
-                        <!-- JS will populate this with pending procurement summaries AND the worklist table -->
-                    </div>
-
-                    <form id="purchaseRequestForm">
-
-                        <!-- Block 1: Requester Info -->
-                        <div class="card form-card" style="margin-bottom: 1.25rem;">
-                            <div class="form-card-header header-info">
-                                <h2>ข้อมูลผู้ขอ</h2>
-                            </div>
-                            <div class="form-card-body">
-                                <div class="form-grid">
-                                    <div class="form-group">
-                                        <label for="employeeName">ชื่อผู้ขอ <span
-                                                class="required-asterisk">*</span></label>
-                                        <input type="text" id="employeeName" name="employeeName" required
-                                            placeholder="เช่น ขุนพล">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>แผนก / กฟส.</label>
-                                        <div class="dept-display" id="deptDisplay">-</div>
-                                    </div>
+                    <div id="userFormView">
+                        <!-- Greeting Banner -->
+                        <div id="greetingContainer" class="card greeting-card hide" style="display: none; margin-bottom: 1.25rem; background: linear-gradient(135deg, #0d9488 0%, #059669 100%); color: white; border: none; padding: 1rem 1.5rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(13, 148, 136, 0.2);">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div style="font-size: 1.5rem;">👋</div>
+                                <div>
+                                    <h2 id="greetingText" style="margin: 0; font-size: 1.2rem; font-weight: 600;">สวัสดี!</h2>
+                                    <p style="margin: 2px 0 0 0; font-size: 0.85rem; opacity: 0.9;">ยินดีต้อนรับเข้าสู่ระบบแจ้งคำขอซื้อวัสดุสำนักงาน</p>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Block 2: Items -->
-                        <div class="card form-card">
+                        <div class="form-main">
+                            <form id="purchaseRequestForm">
+                                <!-- Hidden Requester Info -->
+                                <input type="hidden" id="employeeName" name="employeeName">
+                                <div id="deptDisplay" style="display:none;">-</div>
+
+                                <div class="form-quickselect-layout">
+                                    <!-- Block 2: Items -->
+                                    <div class="card form-card">
                             <div class="form-card-header header-items">
                                 <h2>รายการวัสดุที่ต้องการ</h2>
                             </div>
@@ -160,6 +156,11 @@
                                 <div class="items-toolbar">
                                     <span
                                         style="color: var(--text-muted); font-size: 0.9rem;">เพิ่ม/ลบรายการวัสดุที่ต้องการจัดซื้อ</span>
+                                </div>
+
+                                <div id="itemsContainer"></div>
+
+                                <div class="form-submit-area" style="margin-top: 1rem;">
                                     <button type="button" class="btn btn-outline" id="addItemBtn">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
                                             stroke="currentColor" stroke-width="2">
@@ -167,11 +168,6 @@
                                         </svg>
                                         เพิ่มรายการ
                                     </button>
-                                </div>
-
-                                <div id="itemsContainer"></div>
-
-                                <div class="form-submit-area" style="margin-top: 1rem;">
                                     <button type="submit" class="btn btn-primary" id="submitBtn">
                                         <span id="submitBtnText">🚀 ส่งคำขอจัดซื้อ (Submit)</span>
                                         <div class="spinner hide" id="submitSpinner"></div>
@@ -181,18 +177,32 @@
                             </div>
                         </div>
 
+                        <aside id="quickSelectSection" class="quick-select-section">
+                            <div class="quick-select-header">
+                                <h3>⚡ Quick Select - วัสดุยอดนิยม</h3>
+                                <p class="quick-select-subtitle">คลิกที่วัสดุเพื่อเพิ่มเข้าไปในแบบฟอร์มคำขอ</p>
+                            </div>
+                            <div id="quickSelectContainer" class="quick-select-grid">
+                                <div style="text-align: center; padding: 2rem; color: var(--text-muted); grid-column: span 4;">
+                                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">📦</div>
+                                    กำลังโหลดวัสดุยอดนิยม...
+                                </div>
+                            </div>
+                        </aside>
+                        </div>
+
                         <!-- ==================== ITEM TEMPLATE ==================== -->
                         <template id="itemTemplate">
                             <div class="item-row">
+                                <button type="button" class="item-remove-btn" onclick="removeItem(this)"
+                                    aria-label="ลบรายการนี้" title="ลบรายการนี้">×</button>
                                 <div class="item-number"></div>
 
                                 <div class="item-row-top">
                                     <div class="form-group fg-detail">
                                         <label>รายละเอียดวัสดุที่ขอจัดซื้อ <span class="required-asterisk">*</span>
                                             <span
-                                                style="font-size:0.8rem; color:var(--text-muted); font-weight:normal;">(เช่น
-                                                ปลั๊กพ่วง 3
-                                                เมตร, ผงหมึกเครื่องปริ้น สีดำ SAMSUNG ML-4510ND)</span>
+                                                style="font-size:0.8rem; color:var(--text-muted); font-weight:normal;">(กรุณาเลือกดูรายการจาก Quick Select ก่อน หากไม่มีรายการที่ต้องการสามารถเพิ่มรายการเองได้เลย)</span>
                                         </label>
                                         <input type="text" class="item-name" required
                                             placeholder="ระบุรายละเอียดให้ชัดเจน">
@@ -216,16 +226,13 @@
                                     </div>
                                     <div class="form-group">
                                         <label>หมายเหตุ อื่น ๆ <span class="badge-optional">ไม่บังคับ</span>
-                                            <span
-                                                style="font-size:0.8rem; color:var(--text-muted); font-weight:normal;">(เช่น
-                                                ด่วนมาก, ขอสีแดง)</span>
                                         </label>
                                         <input type="text" class="item-remarks"
                                             placeholder="ระบุหมายเหตุเพิ่มเติม (ถ้ามี)">
                                     </div>
-                                    <div class="form-group" style="min-width: 250px;">
+                                    <div class="form-group fg-priority">
                                         <label>ความเร่งด่วน (Priority) <span class="required-asterisk">*</span></label>
-                                        <div style="display: flex; align-items: center; gap: 12px; margin-top: 5px;">
+                                        <div class="priority-control">
                                             <label class="switch-priority">
                                                 <input type="checkbox" class="item-priority-toggle">
                                                 <div class="slider-priority">
@@ -233,8 +240,7 @@
                                                     <span class="label-on">ด่วน</span>
                                                 </div>
                                             </label>
-                                            <span class="priority-note"
-                                                style="font-size: 0.8rem; color: #b45309; background: #fff9f0; padding: 0.4rem 0.6rem; border-radius: 6px; border: 1px solid #fed7aa; display: none;">
+                                            <span class="priority-note">
                                                 💡 หมึกพิมพ์/Drum ถ้าไม่มีสต๊อกต้องรอสั่งประมาณ 10-30 วัน
                                             </span>
                                         </div>
@@ -252,25 +258,24 @@
                                         </label>
                                         <input type="file" class="item-file" accept="image/*,.pdf"
                                             style="padding:0.4rem; background:transparent; border:1px dashed var(--border-color);">
+                                        <div class="item-file-status" style="font-size: 0.8rem; margin-top: 4px; font-weight: 500;"></div>
                                         <input type="hidden" class="item-file-base64">
                                         <input type="hidden" class="item-file-name">
                                         <input type="hidden" class="item-file-mime">
+                                        <input type="hidden" class="item-file-url">
                                     </div>
                                 </div>
 
-                                <div class="item-row-actions">
-                                    <button type="button" class="btn btn-danger" onclick="removeItem(this)">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2">
-                                            <path d="M18 6L6 18M6 6l12 12"></path>
-                                        </svg>
-                                        ลบรายการนี้
-                                    </button>
-                                </div>
                             </div>
                         </template>
 
-                    </form>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div id="adminHomeView" class="hide" style="display:none;">
+                        <!-- JS will populate this with pending procurement summaries AND the worklist table -->
+                    </div>
                 </section>
 
                 <!-- ===== TAB 2: Tracking ===== -->
@@ -414,6 +419,7 @@
 
             </div>
         </div>
+
     </div>
 
     <!-- ===== CONFIRMATION MODAL ===== -->
@@ -438,8 +444,6 @@
         <div class="modal-dialog" style="max-width: 800px; width: 90%;">
             <div class="modal-header">
                 <h3>🔍 ดูรูปภาพ/เอกสารแนบ</h3>
-                <button onclick="closeImageModal()"
-                    style="background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:1.5rem;">&times;</button>
             </div>
             <div class="modal-body"
                 style="text-align: center; background: #f8fafc; padding: 1rem; min-height: 300px; display: flex; align-items: center; justify-content: center;">
@@ -534,19 +538,19 @@
                         <p style="color: #555; text-align: center; font-size: 0.95rem;" id="printDateString"></p>
                     </div>
 
-                    <table
-                        style="width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 2rem; border: 1px solid #ddd; word-break: break-all; overflow-wrap: anywhere;"
+                    <table id="printWorksheetTable"
+                        style="width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.72rem; margin-bottom: 2rem; border: 1px solid #ddd;"
                         border="1" cellpadding="8" cellspacing="0" bordercolor="#ddd">
                         <thead>
                             <tr style="background-color: #f1f5f9;">
-                                <th style="width: 8%; text-align: center; padding: 10px;">ลำดับ</th>
-                                <th style="width: 30%; text-align: left; padding: 10px;">รายละเอียดวัสดุ</th>
-                                <th style="width: 17%; text-align: center; padding: 10px;">จำนวน/หน่วย</th>
-                                <th style="width: 15%; text-align: center; padding: 10px;">แผนก/ผู้ขอ</th>
-                                <th
-                                    style="width: 15%; text-align: center; padding: 10px; white-space: nowrap; word-break: normal;">
+                                <th style="width: 8%; text-align: center; padding: 9px;">ลำดับ</th>
+                                <th style="width: 30%; text-align: left; padding: 9px;">รายละเอียดวัสดุ</th>
+                                <th style="width: 17%; text-align: center; padding: 9px;">จำนวน/หน่วย</th>
+                                <th style="width: 15%; text-align: center; padding: 9px;">แผนก/ผู้ขอ</th>
+                                <th class="print-col-req"
+                                    style="width: 16%; text-align: center; padding: 9px; white-space: nowrap;">
                                     รหัสคำขอ</th>
-                                <th style="width: 15%; text-align: center; padding: 10px;">หมายเหตุ</th>
+                                <th style="width: 14%; text-align: center; padding: 9px;">หมายเหตุ</th>
                             </tr>
                         </thead>
                         <tbody id="printWorksheetBody">
@@ -592,11 +596,20 @@
 
     <style>
         /* Priority Switch Styling */
+        .priority-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 4px;
+            flex-wrap: wrap;
+        }
+
         .switch-priority {
             position: relative;
             display: inline-block;
-            width: 96px;
-            height: 32px;
+            width: 124px;
+            height: 38px;
+            flex: 0 0 auto;
         }
 
         .switch-priority input {
@@ -612,61 +625,106 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background-color: #f1f5f9;
+            background-color: #f4f7fc;
             transition: .3s;
-            border-radius: 32px;
+            border-radius: 999px;
             display: flex;
             align-items: center;
-            justify-content: space-around;
-            border: 1px solid #e2e8f0;
+            justify-content: space-between;
+            padding: 0 12px;
+            border: 1px solid #d8e0ec;
         }
 
         .slider-priority:before {
             position: absolute;
             content: "";
-            height: 26px;
-            width: 44px;
+            height: 30px;
+            width: 58px;
             left: 3px;
-            bottom: 2px;
+            bottom: 3px;
             background-color: white;
             transition: .3s;
-            border-radius: 30px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+            border-radius: 999px;
+            box-shadow: 0 3px 8px rgba(39, 53, 77, 0.14);
             z-index: 1;
         }
 
         .switch-priority input:checked+.slider-priority {
-            background-color: #fee2e2;
-            border-color: #fecaca;
+            background-color: #fff1f4;
+            border-color: #f3bdcc;
         }
 
         .switch-priority input:checked+.slider-priority:before {
-            transform: translateX(46px);
+            transform: translateX(60px);
         }
 
         .slider-priority .label-off,
         .slider-priority .label-on {
-            font-size: 0.8rem;
+            font-size: 0.82rem;
             font-weight: 600;
             z-index: 2;
             transition: .3s;
             user-select: none;
+            letter-spacing: 0.01em;
+            pointer-events: none;
         }
 
         .slider-priority .label-off {
-            color: #64748b;
+            color: #40536f;
+            opacity: 0.95;
         }
 
         .slider-priority .label-on {
-            color: #64748b;
+            color: #8f4060;
+            opacity: 0.55;
         }
 
         .switch-priority input:checked+.slider-priority .label-on {
-            color: #ef4444;
+            color: #b13a62;
+            opacity: 1;
         }
 
         .switch-priority input:not(:checked)+.slider-priority .label-off {
-            color: #334155;
+            color: #2f425f;
+            opacity: 1;
+        }
+
+        .switch-priority input:not(:checked)+.slider-priority .label-on {
+            opacity: 0.5;
+        }
+
+        .priority-note {
+            display: none;
+            font-size: 0.78rem;
+            color: #8a5d00;
+            background: #fff8ea;
+            border: 1px solid #f1d299;
+            border-radius: 9px;
+            padding: 0.34rem 0.52rem;
+            line-height: 1.45;
+            max-width: 290px;
+        }
+
+        @media (max-width: 768px) {
+            .priority-control {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .switch-priority {
+                width: 116px;
+                height: 36px;
+            }
+
+            .slider-priority:before {
+                width: 54px;
+                height: 28px;
+            }
+
+            .switch-priority input:checked+.slider-priority:before {
+                transform: translateX(56px);
+            }
         }
 
         @media print {
@@ -721,11 +779,50 @@
             }
         }
 
+        #printableWorksheet #printWorksheetTable th,
+        #printableWorksheet #printWorksheetTable td {
+            font-size: 0.72rem;
+            line-height: 1.35;
+            padding: 7px 6px;
+        }
+
         /* Fix table cell overflow */
         #printableWorksheet td {
-            word-break: break-all;
-            overflow-wrap: anywhere;
+            word-break: break-word;
+            overflow-wrap: break-word;
             vertical-align: top;
+        }
+
+        #printableWorksheet td.print-req-cell {
+            text-align: center;
+            white-space: nowrap;
+            word-break: normal;
+            overflow-wrap: normal;
+        }
+
+        #printableWorksheet td.print-dept-user-cell {
+            text-align: center;
+            word-break: normal;
+            overflow-wrap: normal;
+        }
+
+        #printableWorksheet .print-dept-line,
+        #printableWorksheet .print-user-line {
+            display: block;
+            max-width: 100%;
+            white-space: nowrap;
+            line-height: 1.2;
+        }
+
+        #printableWorksheet .print-user-line {
+            margin-top: 2px;
+        }
+
+        #printableWorksheet .print-req-id {
+            display: inline-block;
+            max-width: 100%;
+            white-space: nowrap;
+            line-height: 1.2;
         }
     </style>
 

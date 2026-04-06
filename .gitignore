@@ -1,17 +1,24 @@
-# Dependency & IDE
+# Dependencies & IDE
+node_modules/
 .vscode/
 .idea/
-node_modules/
 
-# OS Files
+# OS files
 Thumbs.db
 Desktop.ini
 .DS_Store
 
-# Project Specific
-.gemini/
-tmp/
+# Logs & temp files
 *.log
-*.bak
 *.tmp
+*.bak
+tmp/
+
+# Local tooling artifacts
+.gemini/
+.tmp_pdf_extract/
+AGENTS.md
+
+# Local config overrides
 config.local.js
+docs/config.local.js

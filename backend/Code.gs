@@ -235,6 +235,8 @@ function doGet(e) {
         return obj;
       });
       return jsonResponse({ status: 'success', data: qResults });
+    } else if (action === 'greenOfficeData') {
+      return handleGreenOfficeData(params);
     }
 
     return jsonResponse({ status: 'success', data: results });
@@ -487,4 +489,118 @@ function doOptions(e) {
     .setHeader('Access-Control-Allow-Origin', '*')
     .setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
     .setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
+// =====================================================
+// Handle: ดึงข้อมูล Green Office Report (Section 6)
+// =====================================================
+function handleGreenOfficeData(params) {
+  const sheet = getSheet();
+  const allData = sheet.getDataRange().getValues();
+  if (allData.length <= 1) return jsonResponse({ status: 'success', data: {} });
+
+  const headers = allData[0].map(h => String(h).trim());
+  const rows = allData.slice(1);
+
+  // หา Index ของคอลัมน์ที่จำเป็น
+  const dateIdx = headers.indexOf('วันที่-เวลาที่ขอ');
+  const itemNameIdx = headers.indexOf('รายละเอียดวัสดุ');
+  const qtyIdx = headers.indexOf('จำนวน');
+  const unitIdx = headers.indexOf('หน่วยนับ');
+  const statusIdx = headers.indexOf('สถานะ');
+  
+  // คอลัมน์ที่อาจจะเพิ่มขึ้นมาใหม่ (ถ้าไม่มีให้เป็น -1)
+  const priceIdx = headers.indexOf('ราคาต่อหน่วย');
+  const isEcoIdx = headers.indexOf('เป็นมิตรต่อสิ่งแวดล้อม');
+  const categoryIdx = headers.indexOf('หมวดหมู่');
+
+  // ดึงข้อมูล QuickSelect มาเป็นตัวเปรียบเทียบ (Reference)
+  const ssId = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
+  const ss = SpreadsheetApp.openById(ssId);
+  const quickSheet = ss.getSheetByName('QuickSelect') || ss.getSheetByName('วัสดุยอดนิยม');
+  const quickDataMap = {};
+  if (quickSheet) {
+    const qData = quickSheet.getDataRange().getValues();
+    if (qData.length > 1) {
+      const qHeaders = qData[0].map(h => String(h).trim());
+      const qNameIdx = qHeaders.indexOf('ชื่อวัสดุ');
+      const qEcoIdx = qHeaders.indexOf('เป็นมิตรต่อสิ่งแวดล้อม');
+      qData.slice(1).forEach(r => {
+        const name = String(r[qNameIdx]).trim();
+        quickDataMap[name] = {
+          isEco: String(r[qEcoIdx]).trim() === 'ใช่'
+        };
+      });
+    }
+  }
+
+  const selectedMonth = parseInt(params.month); // 1-12
+  const selectedYear = parseInt(params.year) - 543; // แปลง พ.ศ. เป็น ค.ศ.
+
+  const reportData = {
+    summary: {
+      totalItems: 0,
+      greenItems: 0,
+      totalValue: 0,
+      greenValue: 0,
+      totalCount: 0, // จำนวนรายการ (Unique Item types)
+      greenCount: 0
+    },
+    details: {} // จัดกลุ่มตามชื่อวัสดุ
+  };
+
+  rows.forEach(row => {
+    const date = new Date(row[dateIdx]);
+    const status = String(row[statusIdx]).trim();
+    
+    // เฉพาะรายการที่ "เสร็จสิ้น" หรือ "อยู่ระหว่างจัดซื้อ/รอจัดซื้อ" ในเดือนที่เลือก
+    // ในที่นี้เลือกเฉพาะที่เสร็จสิ้น หรือทั้งหมดตามเดือน
+    if (isNaN(date.getTime())) return;
+    if (date.getMonth() + 1 !== selectedMonth || date.getFullYear() !== selectedYear) return;
+    
+    const itemName = String(row[itemNameIdx]).trim();
+    const qty = parseFloat(row[qtyIdx]) || 0;
+    const unit = String(row[unitIdx]).trim();
+    const unitPrice = priceIdx !== -1 ? (parseFloat(row[priceIdx]) || 0) : 0; // สมมติถ้าไม่มีให้เป็น 0
+    
+    // ตรวจสอบว่าเป็น Eco หรือไม่ (จากคอลัมน์ใน Sheet หรือจาก QuickSelect Map)
+    let isEco = false;
+    if (isEcoIdx !== -1 && row[isEcoIdx]) {
+      isEco = String(row[isEcoIdx]).trim() === 'ใช่';
+    } else if (quickDataMap[itemName]) {
+      isEco = quickDataMap[itemName].isEco;
+    }
+
+    const value = qty * unitPrice;
+
+    reportData.summary.totalItems += qty;
+    reportData.summary.totalValue += value;
+    if (isEco) {
+      reportData.summary.greenItems += qty;
+      reportData.summary.greenValue += value;
+    }
+
+    if (!reportData.details[itemName]) {
+      reportData.details[itemName] = {
+        name: itemName,
+        unit: unit,
+        totalQty: 0,
+        greenQty: 0,
+        totalValue: 0,
+        greenValue: 0,
+        isEco: isEco
+      };
+      reportData.summary.totalCount++;
+      if (isEco) reportData.summary.greenCount++;
+    }
+
+    reportData.details[itemName].totalQty += qty;
+    reportData.details[itemName].totalValue += value;
+    if (isEco) {
+      reportData.details[itemName].greenQty += qty;
+      reportData.details[itemName].greenValue += value;
+    }
+  });
+
+  return jsonResponse({ status: 'success', data: reportData });
 }

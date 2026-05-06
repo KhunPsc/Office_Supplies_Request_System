@@ -375,12 +375,8 @@
 
                 <div class="card">
                     <div class="card-title" style="margin-bottom: 1rem;">📝 สรุปภาพรวม</div>
-                    <div style="font-size: 0.9rem; line-height: 1.8;">
-                        <p>✅ รายการที่จัดซื้อทั้งหมด <strong>8 รายการ</strong></p>
-                        <p>🌿 เป็นรายการที่เป็นมิตรฯ <strong>7 รายการ</strong> (87.50%)</p>
-                        <hr style="margin: 1rem 0; border: none; border-top: 1px solid var(--border);">
-                        <p>💰 มูลค่ารวม <strong>32,274 บาท</strong></p>
-                        <p>🍃 มูลค่าสินค้าที่เป็นมิตรฯ <strong>20,290 บาท</strong> (62.87%)</p>
+                    <div id="summaryText" style="font-size: 0.9rem; line-height: 1.8;">
+                        <p>กำลังโหลดข้อมูล...</p>
                     </div>
                 </div>
             </div>
@@ -388,21 +384,121 @@
     </div>
 
     <script>
+        let greenChart = null;
+
         document.addEventListener('DOMContentLoaded', () => {
+            // Set initial filters to current month/year
+            const now = new Date();
+            document.getElementById('monthFilter').value = now.getMonth() + 1;
+            document.getElementById('yearFilter').value = now.getFullYear() + 543;
+
+            loadReportData();
+
+            // Listen for filter changes
+            document.getElementById('monthFilter').addEventListener('change', loadReportData);
+            document.getElementById('yearFilter').addEventListener('change', loadReportData);
+        });
+
+        async function loadReportData() {
+            const month = document.getElementById('monthFilter').value;
+            const year = document.getElementById('yearFilter').value;
+            
+            // Show loading state (optional: can add spinner)
+            
+            try {
+                const response = await fetch(`${APPS_SCRIPT_URL}?action=greenOfficeData&month=${month}&year=${year}`);
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    renderDashboard(result.data);
+                } else {
+                    console.error('Error fetching data:', result.message);
+                    alert('เกิดข้อผิดพลาดในการดึงข้อมูล: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Fetch error:', error);
+            }
+        }
+
+        function renderDashboard(data) {
+            const summary = data.summary || { totalItems: 0, greenItems: 0, totalValue: 0, greenValue: 0, totalCount: 0, greenCount: 0 };
+            const details = data.details || {};
+
+            // 1. Update KPI Cards
+            document.getElementById('totalItems').textContent = summary.totalItems.toLocaleString();
+            document.getElementById('greenItems').textContent = summary.greenItems.toLocaleString();
+            
+            const greenPercent = summary.totalItems > 0 ? (summary.greenItems / summary.totalItems * 100) : 0;
+            document.getElementById('greenPercent').textContent = greenPercent.toFixed(2) + '%';
+
+            document.getElementById('totalValue').textContent = summary.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 });
+            document.getElementById('greenValue').textContent = summary.greenValue.toLocaleString(undefined, { minimumFractionDigits: 2 });
+
+            const valuePercent = summary.totalValue > 0 ? (summary.greenValue / summary.totalValue * 100) : 0;
+            document.getElementById('valuePercent').textContent = valuePercent.toFixed(2) + '%';
+
+            // 2. Update Table
+            const tbody = document.querySelector('table tbody');
+            let html = '';
+            
+            const items = Object.values(details);
+            if (items.length === 0) {
+                html = '<tr><td colspan="6" style="text-align:center; padding: 2rem; color: var(--text-muted);"> ไม่พบข้อมูลการจัดซื้อในเดือนนี้ </td></tr>';
+            } else {
+                items.forEach(item => {
+                    html += `
+                        <tr class="${item.isEco ? 'eco-row' : ''}">
+                            <td>${item.name} ${item.isEco ? '<span class="badge badge-green">🌿 Eco</span>' : ''}</td>
+                            <td>-</td>
+                            <td style="text-align: center;">${item.totalQty.toLocaleString()}</td>
+                            <td style="text-align: center;">${item.greenQty.toLocaleString()}</td>
+                            <td style="text-align: right;">${item.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            <td style="text-align: right;">${item.greenValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                    `;
+                });
+            }
+            tbody.innerHTML = html;
+
+            // 3. Update Footer
+            document.querySelector('table tfoot td:nth-child(2)').textContent = summary.totalItems.toLocaleString();
+            document.querySelector('table tfoot td:nth-child(3)').textContent = summary.greenItems.toLocaleString();
+            document.querySelector('table tfoot td:nth-child(4)').textContent = summary.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 });
+            document.querySelector('table tfoot td:nth-child(5)').textContent = summary.greenValue.toLocaleString(undefined, { minimumFractionDigits: 2 });
+
+            // 4. Update Summary Text
+            document.getElementById('summaryText').innerHTML = `
+                <p>✅ รายการที่จัดซื้อทั้งหมด <strong>${summary.totalCount} รายการ</strong></p>
+                <p>🌿 เป็นรายการที่เป็นมิตรฯ <strong>${summary.greenCount} รายการ</strong> (${(summary.totalCount > 0 ? (summary.greenCount/summary.totalCount*100) : 0).toFixed(2)}%)</p>
+                <hr style="margin: 1rem 0; border: none; border-top: 1px solid var(--border);">
+                <p>💰 มูลค่ารวม <strong>${summary.totalValue.toLocaleString()} บาท</strong></p>
+                <p>🍃 มูลค่าสินค้าที่เป็นมิตรฯ <strong>${summary.greenValue.toLocaleString()} บาท</strong> (${valuePercent.toFixed(2)}%)</p>
+            `;
+
+            // 5. Update Chart
+            updateChart(summary);
+        }
+
+        function updateChart(summary) {
             const ctx = document.getElementById('greenChart').getContext('2d');
-            new Chart(ctx, {
+            
+            if (greenChart) {
+                greenChart.destroy();
+            }
+
+            greenChart = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
                     labels: ['เป็นมิตรกับสิ่งแวดล้อม', 'ไม่เป็นมิตรฯ'],
                     datasets: [{
                         label: 'สัดส่วนจำนวนสินค้า',
-                        data: [60, 4],
+                        data: [summary.greenItems, summary.totalItems - summary.greenItems],
                         backgroundColor: ['#10b981', '#f1f5f9'],
                         borderWidth: 0,
                         weight: 0.5
                     }, {
                         label: 'สัดส่วนมูลค่าสินค้า',
-                        data: [20290, 11984],
+                        data: [summary.greenValue, summary.totalValue - summary.greenValue],
                         backgroundColor: ['#059669', '#e2e8f0'],
                         borderWidth: 0,
                         weight: 1
@@ -422,7 +518,7 @@
                     }
                 }
             });
-        });
+        }
     </script>
 </body>
 

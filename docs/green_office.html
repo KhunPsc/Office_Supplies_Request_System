@@ -266,6 +266,23 @@
             box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
         }
 
+        .loading-spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            display: inline-block;
+            animation: spin 1s linear infinite;
+            vertical-align: middle;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
         @media (max-width: 1024px) {
             .main-grid { grid-template-columns: 1fr; }
         }
@@ -347,43 +364,10 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr class="row-group-title">
-                                <td colspan="6">1. กระดาษถ่ายเอกสารหรือพิมพ์ทั่วไป</td>
-                            </tr>
                             <tr>
-                                <td style="padding-left: 2rem;">Double A 80g A4</td>
-                                <td>Double A</td>
-                                <td style="text-align: center;">40</td>
-                                <td style="text-align: center;">40</td>
-                                <td style="text-align: right;">5,000.00</td>
-                                <td style="text-align: right;">5,000.00</td>
-                            </tr>
-                            <tr>
-                                <td style="padding-left: 2rem;">Double A 80g A3</td>
-                                <td>Double A</td>
-                                <td style="text-align: center;">1</td>
-                                <td style="text-align: center;">1</td>
-                                <td style="text-align: right;">320.00</td>
-                                <td style="text-align: right;">320.00</td>
-                            </tr>
-                            <tr class="row-group-title">
-                                <td colspan="6">5. ตลับหมึก</td>
-                            </tr>
-                            <tr>
-                                <td style="padding-left: 2rem;">Epson T664</td>
-                                <td>Epson</td>
-                                <td style="text-align: center;">4</td>
-                                <td style="text-align: center;">4</td>
-                                <td style="text-align: right;">1,370.00</td>
-                                <td style="text-align: right;">1,370.00</td>
-                            </tr>
-                            <tr>
-                                <td style="padding-left: 2rem;">Samsung M2885FW</td>
-                                <td>Samsung</td>
-                                <td style="text-align: center;">4</td>
-                                <td style="text-align: center;">0</td>
-                                <td style="text-align: right;">11,984.00</td>
-                                <td style="text-align: right;">0.00</td>
+                                <td colspan="6" style="text-align:center; padding: 2rem; color: var(--text-muted);"> 
+                                    <div class="loading-spinner"></div> กำลังโหลดข้อมูล... 
+                                </td>
                             </tr>
                         </tbody>
                         <tfoot>
@@ -403,7 +387,7 @@
             <div style="display: flex; flex-direction: column; gap: 1.5rem;">
                 <div class="card">
                     <div class="card-title" style="margin-bottom: 1.5rem;">🍩 สัดส่วนสินค้าที่เป็นมิตรฯ</div>
-                    <div class="chart-container">
+                    <div class="chart-container" id="chartPlaceholder" style="display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.8rem;">
                         <canvas id="greenChart"></canvas>
                     </div>
                 </div>
@@ -411,7 +395,7 @@
                 <div class="card">
                     <div class="card-title" style="margin-bottom: 1rem;">📝 สรุปภาพรวม</div>
                     <div id="summaryText" style="font-size: 0.9rem; line-height: 1.8;">
-                        <p>กำลังโหลดข้อมูล...</p>
+                        <p>กำลังเตรียมข้อมูล...</p>
                     </div>
                 </div>
             </div>

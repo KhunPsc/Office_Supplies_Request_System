@@ -98,7 +98,8 @@ function doPost(e) {
       if (!data.updatedBy || !checkAdminRole(data.updatedBy)) {
         return jsonResponse({ status: 'error', message: 'ไม่มีสิทธิ์เปลี่ยนสถานะ: เฉพาะ Admin เท่านั้น' });
       }
-      return handleUpdateStatus(data);
+    } else if (action === 'addQuickSelect') {
+      return handleAddQuickSelect(data);
     }
     throw new Error('Unknown action: ' + action);
   } catch (error) {
@@ -447,6 +448,35 @@ function handleUpdateStatus(data) {
     status: 'success',
     message: 'Updated ' + updated + ' rows for ' + data.requestId
   });
+}
+
+// =====================================================
+// Handle: เพิ่มรายการ QuickSelect ใหม่
+// =====================================================
+function handleAddQuickSelect(data) {
+  const ssId = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
+  const ss = SpreadsheetApp.openById(ssId);
+  let sheet = ss.getSheetByName('QuickSelect') || ss.getSheetByName('วัสดุยอดนิยม');
+  
+  if (!sheet) {
+    sheet = ss.insertSheet('QuickSelect');
+    sheet.appendRow(['ชื่อวัสดุ', 'หน่วยนับ', 'รูปตัวอย่าง', 'เป็นมิตรต่อสิ่งแวดล้อม']);
+    sheet.getRange(1, 1, 1, 4).setFontWeight('bold').setBackground('#f1f5f9');
+  }
+
+  // ล้างข้อมูลเพื่อความปลอดภัย
+  const itemName = String(data.itemName || '').trim();
+  const unit = String(data.unit || '').trim();
+  const imageUrl = String(data.imageUrl || '').trim();
+  const isEco = data.isEcoFriendly ? 'ใช่' : 'ไม่';
+
+  if (!itemName || !unit || !imageUrl) {
+    return jsonResponse({ status: 'error', message: 'กรุณาระบุชื่อวัสดุ, หน่วยนับ และ URL รูปภาพ' });
+  }
+
+  sheet.appendRow([itemName, unit, imageUrl, isEco]);
+  
+  return jsonResponse({ status: 'success', message: 'เพิ่มรายการ QuickSelect สำเร็จ' });
 }
 
 // =====================================================

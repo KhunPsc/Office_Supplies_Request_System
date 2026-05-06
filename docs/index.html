@@ -72,6 +72,16 @@
                     <span>วิเคราะห์ภาพรวม</span>
                 </button>
 
+                <button class="sidebar-menu-btn admin-only hide" onclick="window.location.href='quickselect_add.html'">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        style="margin-right:0.5rem; vertical-align:middle;">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="16"></line>
+                        <line x1="8" y1="12" x2="16" y2="12"></line>
+                    </svg>
+                    <span>เพิ่มรายการ QuickSelect</span>
+                </button>
+
                 <button class="sidebar-menu-btn" data-target="historySection">ประวัติ</button>
             </nav>
             <div class="sidebar-user" style="display: flex; flex-direction: column; align-items: flex-start; gap: 0.25rem; padding: 1.25rem;">
@@ -179,7 +189,12 @@
 
                         <aside id="quickSelectSection" class="quick-select-section">
                             <div class="quick-select-header">
-                                <h3>⚡ Quick Select - วัสดุยอดนิยม</h3>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                    <h3>⚡ Quick Select - วัสดุยอดนิยม</h3>
+                                    <button id="addQuickSelectBtn" class="btn btn-outline" onclick="window.location.href='quickselect_add.html'" style="padding: 5px 12px; font-size: 0.75rem; border-radius: 8px; background: white; border: 1.5px solid var(--primary-main); color: var(--primary-main); font-weight: 600; cursor: pointer;">
+                                        ➕ เพิ่มรายการ
+                                    </button>
+                                </div>
                                 <p class="quick-select-subtitle">คลิกที่วัสดุเพื่อเพิ่มเข้าไปในแบบฟอร์มคำขอ</p>
                             </div>
                             <div id="quickSelectContainer" class="quick-select-grid">

@@ -721,7 +721,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateAdminToggleUI() {
         if (!adminModeToggle) return;
         const userData = getUserData();
-        if (isAdminMode && !hasAdminAccess(userData)) {
+        const hasAdmin = hasAdminAccess(userData);
+
+        if (isAdminMode && !hasAdmin) {
             isAdminMode = false;
         }
 
@@ -729,20 +731,27 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.toggle('admin-theme', isAdminMode);
 
         const menuHomeBtn = document.getElementById('menuHomeBtn');
-        const analysisMenuBtn = document.getElementById('analysisMenuBtn');
+
+        // Toggle all admin-only elements (Shown ONLY in Admin Mode)
+        document.querySelectorAll('.admin-only').forEach(el => {
+            if (isAdminMode) {
+                el.classList.remove('hide');
+            } else {
+                el.classList.add('hide');
+            }
+        });
+
+        // Toggle admin-privilege-only elements (Shown if user HAS admin access, regardless of Mode)
+        document.querySelectorAll('.admin-privilege-only').forEach(el => {
+            if (hasAdmin) {
+                el.classList.remove('hide');
+            } else {
+                el.classList.add('hide');
+            }
+        });
 
         if (menuHomeBtn) {
             menuHomeBtn.textContent = isAdminMode ? 'Admin Workboard' : 'แบบฟอร์มขอจัดซื้อ';
-        }
-
-        if (analysisMenuBtn) {
-            if (isAdminMode) {
-                analysisMenuBtn.classList.remove('hide');
-                analysisMenuBtn.style.display = 'block';
-            } else {
-                analysisMenuBtn.classList.add('hide');
-                analysisMenuBtn.style.display = 'none';
-            }
         }
 
         updateHomeView();

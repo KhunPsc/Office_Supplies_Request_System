@@ -1,0 +1,188 @@
+        updated++;
+      }
+    }
+  }
+
+  return jsonResponse({
+    status: 'success',
+    message: 'Updated ' + updated + ' rows for ' + data.requestId
+  });
+}
+
+// =====================================================
+// Handle: เพิ่มรายการ QuickSelect ใหม่
+// =====================================================
+function handleAddQuickSelect(data) {
+  const ssId = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
+  const ss = SpreadsheetApp.openById(ssId);
+  let sheet = ss.getSheetByName('QuickSelect') || ss.getSheetByName('วัสดุยอดนิยม');
+  
+  if (!sheet) {
+    sheet = ss.insertSheet('QuickSelect');
+    sheet.appendRow(['ชื่อวัสดุ', 'หน่วยนับ', 'รูปตัวอย่าง', 'เป็นมิตรต่อสิ่งแวดล้อม']);
+    sheet.getRange(1, 1, 1, 4).setFontWeight('bold').setBackground('#f1f5f9');
+  }
+
+  // ล้างข้อมูลเพื่อความปลอดภัย
+  const itemName = String(data.itemName || '').trim();
+  const unit = String(data.unit || '').trim();
+  const imageUrl = String(data.imageUrl || '').trim();
+  const isEco = data.isEcoFriendly ? 'ใช่' : 'ไม่';
+
+  if (!itemName || !unit || !imageUrl) {
+    return jsonResponse({ status: 'error', message: 'กรุณาระบุชื่อวัสดุ, หน่วยนับ และ URL รูปภาพ' });
+  }
+
+  sheet.appendRow([itemName, unit, imageUrl, isEco]);
+  
+  return jsonResponse({ status: 'success', message: 'เพิ่มรายการ QuickSelect สำเร็จ' });
+}
+
+// =====================================================
+// Handle: ดึงข้อมูล Green Office Report (Section 6)
+// =====================================================
+function handleGreenOfficeData(params) {
+  const sheet = getSheet();
+  const allData = sheet.getDataRange().getValues();
+  if (allData.length <= 1) return jsonResponse({ status: 'success', data: {} });
+
+  const headers = allData[0].map(h => String(h).trim());
+  const rows = allData.slice(1);
+
+  const reqIdIdx = 0; // A
+  const dateIdx = headers.indexOf('วันที่-เวลาที่ขอ');
+  const itemNameIdx = headers.indexOf('รายละเอียดวัสดุ');
+  const qtyIdx = headers.indexOf('จำนวน');
+  const unitIdx = headers.indexOf('หน่วยนับ');
+  const itemIdxCol = 5; // F
+  
+  const priceIdx = headers.indexOf('ราคาต่อหน่วย');
+  const isEcoIdx = headers.indexOf('เป็นมิตรต่อสิ่งแวดล้อม');
+
+  // ดึงข้อมูล QuickSelect มาเป็นตัวเปรียบเทียบ
+  const ssId = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
+  const ss = SpreadsheetApp.openById(ssId);
+  const quickSheet = ss.getSheetByName('QuickSelect') || ss.getSheetByName('วัสดุยอดนิยม');
+  const quickDataMap = {};
+  if (quickSheet) {
+    const qData = quickSheet.getDataRange().getValues();
+    if (qData.length > 1) {
+      const qHeaders = qData[0].map(h => String(h).trim());
+      const qNameIdx = qHeaders.indexOf('ชื่อวัสดุ');
+      const qEcoIdx = qHeaders.indexOf('เป็นมิตรต่อสิ่งแวดล้อม');
+      qData.slice(1).forEach(r => {
+        const name = String(r[qNameIdx]).trim();
+        quickDataMap[name] = { isEco: String(r[qEcoIdx]).trim() === 'ใช่' };
+      });
+    }
+  }
+
+  const selectedMonth = parseInt(params.month);
+  const selectedYear = parseInt(params.year) - 543;
+
+  const reportData = {
+    summary: { totalItems: 0, greenItems: 0, totalValue: 0, greenValue: 0, totalCount: 0, greenCount: 0 },
+    items: [] 
+  };
+
+  rows.forEach(row => {
+    const date = new Date(row[dateIdx]);
+    if (isNaN(date.getTime())) return;
+    if (date.getMonth() + 1 !== selectedMonth || date.getFullYear() !== selectedYear) return;
+    
+    const itemName = String(row[itemNameIdx]).trim();
+    const qty = parseFloat(row[qtyIdx]) || 0;
+    const unit = String(row[unitIdx]).trim();
+    const unitPrice = priceIdx !== -1 ? (parseFloat(row[priceIdx]) || 0) : 0;
+    
+    let isEco = false;
+    if (isEcoIdx !== -1 && row[isEcoIdx]) {
+      isEco = String(row[isEcoIdx]).trim() === 'ใช่';
+    } else if (quickDataMap[itemName]) {
+      isEco = quickDataMap[itemName].isEco;
+    }
+
+    const value = qty * unitPrice;
+
+    reportData.summary.totalItems += qty;
+    reportData.summary.totalValue += value;
+    if (isEco) {
+      reportData.summary.greenItems += qty;
+      reportData.summary.greenValue += value;
+    }
+
+    reportData.items.push({
+      requestId: row[reqIdIdx],
+      index: row[itemIdxCol],
+      name: itemName,
+      unit: unit,
+      qty: qty,
+      unitPrice: unitPrice,
+      isEco: isEco,
+      value: value
+    });
+  });
+
+  return jsonResponse({ status: 'success', data: reportData });
+}
+
+// =====================================================
+// Handle: บันทึกข้อมูลราคาและสถานะ Green Office
+// =====================================================
+function handleUpdateGreenOffice(data) {
+  const sheet = getSheet();
+  const allData = sheet.getDataRange().getValues();
+  const headers = allData[0].map(h => String(h).trim());
+  
+  let priceIdx = headers.indexOf('ราคาต่อหน่วย');
+  let isEcoIdx = headers.indexOf('เป็นมิตรต่อสิ่งแวดล้อม');
+  
+  if (priceIdx === -1) {
+    priceIdx = headers.length;
+    sheet.getRange(1, priceIdx + 1).setValue('ราคาต่อหน่วย');
+    headers.push('ราคาต่อหน่วย');
+  }
+  if (isEcoIdx === -1) {
+    isEcoIdx = headers.length;
+    sheet.getRange(1, isEcoIdx + 1).setValue('เป็นมิตรต่อสิ่งแวดล้อม');
+    headers.push('เป็นมิตรต่อสิ่งแวดล้อม');
+  }
+
+  let updatedCount = 0;
+  const updateMap = {}; 
+  if (data.items && Array.isArray(data.items)) {
+    data.items.forEach(it => {
+      const key = it.requestId + '_' + it.index;
+      updateMap[key] = it;
+    });
+  }
+
+  for (let i = 1; i < allData.length; i++) {
+    const rowId = allData[i][0];
+    const rowIdx = allData[i][5];
+    const key = rowId + '_' + rowIdx;
+    
+    if (updateMap[key]) {
+      const up = updateMap[key];
+      if (up.unitPrice !== undefined) {
+        sheet.getRange(i + 1, priceIdx + 1).setValue(parseFloat(up.unitPrice) || 0);
+      }
+      if (up.isEco !== undefined) {
+        sheet.getRange(i + 1, isEcoIdx + 1).setValue(up.isEco ? 'ใช่' : 'ไม่');
+      }
+      updatedCount++;
+    }
+  }
+
+  return jsonResponse({ status: 'success', message: 'บันทึกข้อมูลสำเร็จ ' + updatedCount + ' รายการ' });
+}
+
+// =====================================================
+// CORS preflight
+// =====================================================
+function doOptions(e) {
+  return ContentService.createTextOutput('')
+    .setHeader('Access-Control-Allow-Origin', '*')
+    .setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+    .setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}

@@ -35,6 +35,11 @@ function hasAdminAccess(userData) {
            String(userData.Role_2 || '').toLowerCase().trim() === 'admin';
 }
 
+function getCurrentUserCode() {
+    const userData = getUserData();
+    return userData ? String(userData.Code || userData.code || userData.User || '').trim() : '';
+}
+
 async function fetchTrackingData() {
     const appScriptUrl = getAppScriptUrl();
     if (!appScriptUrl) return [];
@@ -676,9 +681,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.innerHTML = '⏳';
 
         try {
-            const userStr = sessionStorage.getItem('userData');
-    const userData = userStr ? JSON.parse(userStr) : null;
-    const user = userData ? userData.User : '';
+            const user = getCurrentUserCode();
             const res = await fetch(appScriptUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -1746,9 +1749,7 @@ window.updateSortIcons = function() {
 
         setLoading(true);
         try {
-            const userStr = sessionStorage.getItem('userData');
-    const userData = userStr ? JSON.parse(userStr) : null;
-    const user = userData ? userData.User : '';
+            const user = getCurrentUserCode();
             const itemsToUpdate = req.items.map(it => ({
                 index: it.index,
                 status: 'ยกเลิก',
@@ -1843,9 +1844,7 @@ window.updateSortIcons = function() {
         if (!appScriptUrl) return;
 
         const id = adminReqIdSpan.innerText;
-        const userStr = sessionStorage.getItem('userData');
-    const userData = userStr ? JSON.parse(userStr) : null;
-    const user = userData ? userData.User : '';
+        const user = getCurrentUserCode();
         const itemRows = document.querySelectorAll('.admin-item-row');
         const itemsToUpdate = [];
         let isValid = true;
@@ -1998,9 +1997,7 @@ window.updateSortIcons = function() {
         const appScriptUrl = getAppScriptUrl();
         if (!appScriptUrl) return;
 
-        const userStr = sessionStorage.getItem('userData');
-    const userData = userStr ? JSON.parse(userStr) : null;
-    const user = userData ? userData.User : '';
+        const user = getCurrentUserCode();
         const rows = document.querySelectorAll('.batch-admin-item-row');
         const groups = {};
         let isValid = true;
@@ -2170,9 +2167,7 @@ window.updateSortIcons = function() {
                 });
             });
 
-            const userStr = sessionStorage.getItem('userData');
-    const userData = userStr ? JSON.parse(userStr) : null;
-            const user = userData ? userData.User : '';
+            const user = getCurrentUserCode();
             try {
                 for (const [reqId, reqItems] of Object.entries(grouped)) {
                     const res = await fetch(appScriptUrl, {
@@ -2317,6 +2312,7 @@ loginForm?.addEventListener('submit', async (e) => {
         const result = await res.json();
 
         if (result.status === 'success') {
+            if (result.user && !result.user.Code) result.user.Code = code;
             sessionStorage.setItem('userData', JSON.stringify(result.user));
             await checkLogin();
             renderTrackingTable();

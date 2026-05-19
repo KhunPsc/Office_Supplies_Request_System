@@ -17,12 +17,16 @@ function checkAdminRole(employeeName) {
 
   const uData = userSheet.getDataRange().getValues();
   const uHeaders = uData[0].map(h => String(h).trim());
-  const userIdx = uHeaders.indexOf('Code');
+  const codeIdx = uHeaders.indexOf('Code');
+  const userIdx = uHeaders.indexOf('User');
   const r1Idx = uHeaders.indexOf('Role_1');
   const r2Idx = uHeaders.indexOf('Role_2');
+  const loginValue = String(employeeName).trim();
 
   for (let i = 1; i < uData.length; i++) {
-    if (String(uData[i][userIdx]).trim() === String(employeeName).trim()) {
+    const code = codeIdx !== -1 ? String(uData[i][codeIdx]).trim() : '';
+    const user = userIdx !== -1 ? String(uData[i][userIdx]).trim() : '';
+    if (code === loginValue || user === loginValue) {
       const r1 = String(uData[i][r1Idx] || '').toLowerCase().trim();
       const r2 = String(uData[i][r2Idx] || '').toLowerCase().trim();
       return r1 === 'admin' || r2 === 'admin';

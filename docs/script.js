@@ -2039,7 +2039,7 @@ window.updateSortIcons = function() {
 
         try {
             for (const [reqId, items] of Object.entries(groups)) {
-                await fetch(appScriptUrl, {
+                const res = await fetch(appScriptUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify({
@@ -2049,6 +2049,10 @@ window.updateSortIcons = function() {
                         items: items
                     })
                 });
+                const result = await res.json();
+                if (result.status !== 'success') {
+                    throw new Error(result.message || `บันทึกสถานะคำขอ ${reqId} ไม่สำเร็จ`);
+                }
             }
             alert('✅ บันทึกสถานะทั้งหมดเรียบร้อยแล้ว');
             closeBatchAdminModal();
@@ -2168,10 +2172,10 @@ window.updateSortIcons = function() {
 
             const userStr = sessionStorage.getItem('userData');
     const userData = userStr ? JSON.parse(userStr) : null;
-    const user = userData ? userData.User : '';
+            const user = userData ? userData.User : '';
             try {
                 for (const [reqId, reqItems] of Object.entries(grouped)) {
-                    await fetch(appScriptUrl, {
+                    const res = await fetch(appScriptUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                         body: JSON.stringify({
@@ -2181,6 +2185,10 @@ window.updateSortIcons = function() {
                             items: reqItems
                         })
                     });
+                    const result = await res.json();
+                    if (result.status !== 'success') {
+                        throw new Error(result.message || `Auto update failed for ${reqId}`);
+                    }
                 }
             } catch (e) {
                 console.error('Auto update before print failed:', e);

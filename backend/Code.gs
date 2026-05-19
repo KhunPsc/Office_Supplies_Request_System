@@ -193,26 +193,62 @@ function handleUpdateRequest(data) {
 function handleUpdateStatus(data) {
   const sheet = getSheet();
   const allData = sheet.getDataRange().getValues();
+  if (!data.requestId) {
+    return jsonResponse({ status: 'error', message: 'ไม่พบรหัสคำขอสำหรับอัปเดตสถานะ' });
+  }
+  if (!Array.isArray(data.items) || data.items.length === 0) {
+    return jsonResponse({ status: 'error', message: 'ไม่มีรายการสำหรับอัปเดตสถานะ' });
+  }
+
+  const headers = allData[0].map(h => String(h).trim());
+  const col = (names, fallback) => {
+    for (const name of names) {
+      const idx = headers.indexOf(name);
+      if (idx !== -1) return idx;
+    }
+    return fallback;
+  };
+  const requestIdCol = col(['รหัสคำขอ', 'requestId', 'ID'], 0);
+  const itemIndexCol = col(['ลำดับรายการ', 'index'], 5);
+  const qtyCol = col(['จำนวน', 'quantity'], 7);
+  const unitCol = col(['หน่วยนับ', 'unit'], 8);
+  const statusCol = col(['สถานะ', 'status'], 12);
+  const noteCol = col(['หมายเหตุ Admin', 'adminNote'], 13);
+  const updatedByCol = col(['ผู้ดำเนินการ', 'updatedBy'], 14);
+  const updatedAtCol = col(['วันที่อัปเดตสถานะ', 'updatedAt'], 15);
+  const priorityCol = col(['Priority', 'priority', 'Piority', 'ความเร่งด่วน'], 16);
+
   const now = new Date();
   const itemMap = {};
-  data.items.forEach(it => { itemMap[String(it.index)] = it; });
+  data.items.forEach(it => {
+    itemMap[String(it.index).trim()] = it;
+  });
   let updated = 0;
+  let matchedRequest = false;
   for (let i = 1; i < allData.length; i++) {
-    if (allData[i][0] === data.requestId) {
-      const it = itemMap[String(allData[i][5])];
+    if (String(allData[i][requestIdCol]).trim() === String(data.requestId).trim()) {
+      matchedRequest = true;
+      const it = itemMap[String(allData[i][itemIndexCol]).trim()];
       if (it) {
-        sheet.getRange(i + 1, 13).setValue(it.status);
-        sheet.getRange(i + 1, 14).setValue(it.note || '');
-        sheet.getRange(i + 1, 15).setValue(data.updatedBy || '');
-        sheet.getRange(i + 1, 16).setValue(now);
-        if (it.qty !== undefined) sheet.getRange(i + 1, 8).setValue(it.qty);
-        if (it.unit !== undefined) sheet.getRange(i + 1, 9).setValue(it.unit);
-        if (it.priority !== undefined) sheet.getRange(i + 1, 17).setValue(it.priority);
+        sheet.getRange(i + 1, statusCol + 1).setValue(String(it.status || '').trim());
+        sheet.getRange(i + 1, noteCol + 1).setValue(it.note || '');
+        sheet.getRange(i + 1, updatedByCol + 1).setValue(data.updatedBy || '');
+        sheet.getRange(i + 1, updatedAtCol + 1).setValue(now);
+        if (it.qty !== undefined) sheet.getRange(i + 1, qtyCol + 1).setValue(it.qty);
+        if (it.unit !== undefined) sheet.getRange(i + 1, unitCol + 1).setValue(it.unit);
+        if (it.priority !== undefined) sheet.getRange(i + 1, priorityCol + 1).setValue(it.priority);
         updated++;
       }
     }
   }
-  return jsonResponse({ status: 'success', message: 'Updated ' + updated + ' items' });
+  if (!matchedRequest) {
+    return jsonResponse({ status: 'error', message: 'ไม่พบรหัสคำขอ ' + data.requestId + ' ในชีต' });
+  }
+  if (updated === 0) {
+    return jsonResponse({ status: 'error', message: 'ไม่พบลำดับรายการที่ต้องการอัปเดตในคำขอ ' + data.requestId });
+  }
+  SpreadsheetApp.flush();
+  return jsonResponse({ status: 'success', message: 'Updated ' + updated + ' items', updated: updated });
 }
 
 function handleAddQuickSelect(data) {
